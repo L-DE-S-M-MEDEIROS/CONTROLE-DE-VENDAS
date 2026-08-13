@@ -6,5 +6,7 @@ dist/
 work/
 outputs/*.exe
 outputs/*.txt
+output/pdf/*.pdf
+tmp/
 *.spec
 .venv/

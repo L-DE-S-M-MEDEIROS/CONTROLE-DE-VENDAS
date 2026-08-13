@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## 1.5.0 — 2026-08-13
+
+- ícone de impressão adicionado ao lado do ícone de copiar em cada produto;
+- etiqueta térmica individual em página física de 40 x 25 mm;
+- nome do produto em destaque, Code 128 correspondente ao código cadastrado e numeração legível;
+- abertura automática da etiqueta no navegador com orientação para imprimir em tamanho real.
+
 ## 1.4.2 — 2026-08-13
 
 - ícone de cópia adicionado ao lado de cada produto na tabela;

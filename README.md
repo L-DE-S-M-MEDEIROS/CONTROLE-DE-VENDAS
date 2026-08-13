@@ -1,6 +1,6 @@
 # Vendas PRO — Controle de Vendas
 
-Aplicativo desktop para Windows com interface adaptativa para Full HD e 4K, temas Dark/Light, menu inicial, cadastro de produtos e clientes, vendas por bipagem, histórico editável, faturamento bruto, relatórios A4 em PDF, backup e atualização segura pelo GitHub Releases.
+Aplicativo desktop para Windows com interface adaptativa para Full HD e 4K, temas Dark/Light, menu inicial, cadastro de produtos e clientes, etiquetas térmicas 40 x 25 mm com Code 128, vendas por bipagem, histórico editável, faturamento bruto, relatórios A4 em PDF, backup e atualização segura pelo GitHub Releases.
 
 ## Desenvolvimento e testes
 

@@ -4,8 +4,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from pypdf import PdfReader
+from reportlab.lib.units import mm
+
 from sales_control.database import Database
-from sales_control.reports import product_pdf, revenue_pdf
+from sales_control.reports import (
+    _label_barcode,
+    product_label_pdf,
+    product_pdf,
+    revenue_pdf,
+)
 from sales_control.updater import UpdateError, UpdateInfo, check_for_update, download_update
 
 
@@ -109,6 +117,32 @@ class FlowTests(unittest.TestCase):
         self.db.delete_client(client)
         self.assertEqual([], self.db.list_clients())
         self.assertEqual("Cliente com histórico", self.db.list_sales()[0]["client_name"])
+
+    def test_thermal_product_label_is_exactly_40_by_25_mm(self):
+        product_id = self.db.add_product("2P ML Yuri", 2590)
+        product = next(
+            row for row in self.db.list_products() if row["id"] == product_id
+        )
+        path = product_label_pdf(self.root / "etiqueta.pdf", product)
+        reader = PdfReader(path)
+        self.assertEqual(1, len(reader.pages))
+        page = reader.pages[0]
+        self.assertAlmostEqual(40 * mm, float(page.mediabox.width), places=2)
+        self.assertAlmostEqual(25 * mm, float(page.mediabox.height), places=2)
+        extracted = page.extract_text()
+        self.assertIn("2P ML YURI", extracted)
+        self.assertIn(product["barcode"], extracted)
+
+        barcode = _label_barcode(product["barcode"])
+        barcode.validate()
+        encoded = barcode.encode()
+        self.assertEqual(106, encoded[-1])
+        expected_checksum = (
+            encoded[0]
+            + sum(position * value for position, value in enumerate(encoded[1:-2], 1))
+        ) % 103
+        self.assertEqual(expected_checksum, encoded[-2])
+        self.assertTrue(barcode.decompose())
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageTk
 
 from . import __version__
 from .database import Database
-from .reports import money, product_pdf, revenue_pdf
+from .reports import money, product_label_pdf, product_pdf, revenue_pdf
 from .theme import THEMES, ThemePreferences, get_theme, preferred_font
 from .updater import (
     UpdateError,
@@ -665,7 +665,7 @@ class App(tk.Tk):
 
         self.products = ttk.Treeview(
             panel,
-            columns=("id", "name", "price", "barcode", "copy"),
+            columns=("id", "name", "price", "barcode", "copy", "print"),
             show="headings",
             height=6,
         )
@@ -674,7 +674,8 @@ class App(tk.Tk):
             ("name", "PRODUTO", self.px(520), "center"),
             ("price", "PREÇO", self.px(160), "center"),
             ("barcode", "CÓDIGO DE BARRAS", self.px(270), "center"),
-            ("copy", "", self.px(90), "center"),
+            ("copy", "", self.px(70), "center"),
+            ("print", "", self.px(70), "center"),
         ]:
             self.products.heading(column, text=title, anchor="center")
             self.products.column(column, width=width, anchor="center")
@@ -687,14 +688,14 @@ class App(tk.Tk):
         actions.pack(fill="x", padx=22, pady=(0, 20))
         ttk.Button(actions, text="Editar produto", style="Accent.TButton", command=self.edit_product).pack(side="left")
         ttk.Button(actions, text="Excluir produto", style="Danger.TButton", command=self.delete_product).pack(side="left", padx=8)
-        self.product_copy_status = tk.Label(
+        self.product_action_status = tk.Label(
             actions,
             text="",
             bg=PANEL,
             fg=GREEN,
             font=(FONT_FAMILY, 9, "bold"),
         )
-        self.product_copy_status.pack(side="left", padx=self.px(8))
+        self.product_action_status.pack(side="left", padx=self.px(8))
 
     def _build_clients(self):
         page = self._new_page("clients")
@@ -1093,7 +1094,7 @@ class App(tk.Tk):
             messagebox.showinfo(
                 "Produto cadastrado",
                 f"Código gerado automaticamente:\n{product['barcode']}\n\n"
-                "Use o ícone ⧉ ao lado do produto para copiar o código.",
+                "Use os ícones ⧉ e ⎙ ao lado do produto para copiar o código ou imprimir a etiqueta.",
             )
         except Exception as exc:
             messagebox.showerror("Produto", str(exc))
@@ -1113,24 +1114,29 @@ class App(tk.Tk):
                     money(product["price_cents"]),
                     product["barcode"],
                     "⧉",
+                    "⎙",
                 ),
             )
 
     def _product_table_click(self, event):
         if self.products.identify_region(event.x, event.y) != "cell":
             return None
-        if self.products.identify_column(event.x) != "#5":
+        column = self.products.identify_column(event.x)
+        if column not in {"#5", "#6"}:
             return None
         item_id = self.products.identify_row(event.y)
         if not item_id:
             return None
         self.products.selection_set(item_id)
         self.products.focus(item_id)
-        self.copy_product_barcode(item_id=item_id, notify=False)
+        if column == "#5":
+            self.copy_product_barcode(item_id=item_id, notify=False)
+        else:
+            self.print_product_label(item_id=item_id)
         return "break"
 
     def _product_table_double_click(self, event):
-        if self.products.identify_column(event.x) == "#5":
+        if self.products.identify_column(event.x) in {"#5", "#6"}:
             return "break"
         item_id = self.products.identify_row(event.y)
         if item_id:
@@ -1140,12 +1146,12 @@ class App(tk.Tk):
         return None
 
     def _product_table_motion(self, event):
-        is_copy_icon = (
+        is_action_icon = (
             self.products.identify_region(event.x, event.y) == "cell"
-            and self.products.identify_column(event.x) == "#5"
+            and self.products.identify_column(event.x) in {"#5", "#6"}
             and bool(self.products.identify_row(event.y))
         )
-        self.products.configure(cursor="hand2" if is_copy_icon else "")
+        self.products.configure(cursor="hand2" if is_action_icon else "")
 
     def _selected(self, tree):
         selected = tree.selection()
@@ -1180,10 +1186,34 @@ class App(tk.Tk):
         self.clipboard_clear()
         self.clipboard_append(code)
         self.update_idletasks()
-        if hasattr(self, "product_copy_status"):
-            self.product_copy_status.config(text=f"Código {code} copiado")
+        if hasattr(self, "product_action_status"):
+            self.product_action_status.config(text=f"Código {code} copiado")
         if notify:
             messagebox.showinfo("Código copiado", f"O código {code} foi copiado para a área de transferência.")
+
+    def print_product_label(self, item_id=None):
+        if item_id and self.products.exists(str(item_id)):
+            row = self.products.item(str(item_id), "values")
+        else:
+            row = self._selected(self.products)
+        if not row:
+            return messagebox.showwarning("Etiqueta", "Selecione o produto cuja etiqueta deseja imprimir.")
+        try:
+            label_folder = self.db.path.parent / "etiquetas"
+            label_path = label_folder / f"etiqueta_produto_{row[0]}_{row[3]}.pdf"
+            product_label_pdf(label_path, {"name": row[1], "barcode": row[3]})
+            if hasattr(self, "product_action_status"):
+                self.product_action_status.config(text=f"Etiqueta de {row[1]} gerada")
+            self.open_pdf_for_printing(
+                label_path,
+                document_title="Etiqueta térmica 40 x 25 mm",
+                print_hint=(
+                    "No navegador, pressione Ctrl+P. Selecione o papel 40 x 25 mm, "
+                    "escala 100% (tamanho real) e margens desativadas."
+                ),
+            )
+        except Exception as exc:
+            messagebox.showerror("Etiqueta", str(exc))
 
     def delete_product(self):
         row = self._selected(self.products)
@@ -1307,19 +1337,24 @@ class App(tk.Tk):
             revenue_pdf(path, self.report_rows, self.start.get(), self.end.get(), self.report_client.get())
             self.open_pdf_for_printing(path)
 
-    def open_pdf_for_printing(self, path):
+    def open_pdf_for_printing(
+        self,
+        path,
+        document_title="Relatório A4",
+        print_hint="No navegador, pressione Ctrl+P para imprimir.",
+    ):
         pdf_path = Path(path).resolve()
         try:
             opened = webbrowser.open(pdf_path.as_uri(), new=2)
             if not opened and os.name == "nt":
                 os.startfile(pdf_path)  # type: ignore[attr-defined]
             messagebox.showinfo(
-                "Relatório A4 pronto",
-                f"O PDF foi salvo e aberto para impressão:\n{pdf_path}\n\nNo navegador, pressione Ctrl+P para imprimir.",
+                f"{document_title} pronto",
+                f"O PDF foi salvo e aberto para impressão:\n{pdf_path}\n\n{print_hint}",
             )
         except Exception as exc:
             messagebox.showwarning(
-                "Relatório salvo",
+                f"{document_title} salvo",
                 f"O PDF foi salvo em:\n{pdf_path}\n\nNão foi possível abrir o navegador automaticamente: {exc}",
             )
 

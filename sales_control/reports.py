@@ -5,7 +5,16 @@ from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
+from reportlab.graphics.barcode.code128 import Code128
+from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.pdfgen import canvas
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+
+
+LABEL_PAGE_SIZE = (40 * mm, 25 * mm)
+LABEL_BAR_WIDTH = 0.25 * mm
+LABEL_BAR_HEIGHT = 8.5 * mm
+LABEL_QUIET_ZONE = 1.5 * mm
 
 
 def money(cents: int) -> str:
@@ -49,3 +58,58 @@ def revenue_pdf(path, rows, start, end, client_label):
     data = [["Cliente", "Valor comprado"]] + ([[r["client_name"], money(r["total_cents"])] for r in rows] or [["Nenhuma venda no período", money(0)]])
     story += [_table(data, [130*mm, 50*mm]), Spacer(1, 6*mm), Paragraph(f"TOTAL BRUTO: <b>{money(total)}</b>", styles["Right"])]
     _doc(path, "Relatório de Faturamento Bruto").build(story)
+
+
+def _fit_label_name(name: str, maximum_width: float):
+    text = " ".join(str(name).strip().upper().split()) or "PRODUTO"
+    font_name = "Helvetica-Bold"
+    font_size = 11.5
+    while font_size > 6.5 and stringWidth(text, font_name, font_size) > maximum_width:
+        font_size -= 0.25
+    if stringWidth(text, font_name, font_size) <= maximum_width:
+        return text, font_size
+
+    suffix = "..."
+    while text and stringWidth(text + suffix, font_name, font_size) > maximum_width:
+        text = text[:-1]
+    return (text.rstrip() + suffix) if text else "PRODUTO", font_size
+
+
+def _label_barcode(value: str):
+    barcode = str(value).strip()
+    if not barcode or not barcode.isascii() or not barcode.isdigit():
+        raise ValueError("O produto não possui um código numérico válido para a etiqueta.")
+    return Code128(
+        barcode,
+        barWidth=LABEL_BAR_WIDTH,
+        barHeight=LABEL_BAR_HEIGHT,
+        humanReadable=False,
+        quiet=True,
+        lquiet=LABEL_QUIET_ZONE,
+        rquiet=LABEL_QUIET_ZONE,
+    )
+
+
+def product_label_pdf(path, product):
+    """Create one browser-printable thermal label on an exact 40 x 25 mm page."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    product_name = str(product["name"])
+    barcode_value = str(product["barcode"])
+    label = canvas.Canvas(str(path), pagesize=LABEL_PAGE_SIZE, pageCompression=1)
+    label.setTitle(f"Etiqueta - {product_name}")
+    page_width, _page_height = LABEL_PAGE_SIZE
+
+    title, title_size = _fit_label_name(product_name, 34 * mm)
+    label.setFillColor(colors.black)
+    label.setFont("Helvetica-Bold", title_size)
+    label.drawCentredString(page_width / 2, 19.0 * mm, title)
+
+    barcode = _label_barcode(barcode_value)
+    barcode.drawOn(label, (page_width - barcode.width) / 2, 5.0 * mm)
+
+    label.setFont("Helvetica-Bold", 8.6)
+    label.drawCentredString(page_width / 2, 1.55 * mm, barcode_value)
+    label.showPage()
+    label.save()
+    return path

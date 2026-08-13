@@ -168,9 +168,11 @@ class InterfaceTests(unittest.TestCase):
                 app.refresh_products()
                 item_id = str(product_id)
                 values = app.products.item(item_id, "values")
-                self.assertEqual("copy", app.products["columns"][-1])
+                self.assertEqual(("copy", "print"), app.products["columns"][-2:])
                 self.assertEqual("", app.products.heading("copy", "text"))
+                self.assertEqual("", app.products.heading("print", "text"))
                 self.assertEqual("⧉", values[4])
+                self.assertEqual("⎙", values[5])
 
                 with patch.object(
                     app.products, "identify_region", return_value="cell"
@@ -183,7 +185,47 @@ class InterfaceTests(unittest.TestCase):
 
                 self.assertEqual("break", result)
                 self.assertEqual(str(values[3]), app.clipboard_get())
-                self.assertIn(str(values[3]), app.product_copy_status.cget("text"))
+                self.assertIn(str(values[3]), app.product_action_status.cget("text"))
+            finally:
+                app.destroy()
+
+    def test_product_row_print_icon_generates_the_correct_label(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "print_icon.db",
+                maximize=False,
+                dpi_scale_override=1.0,
+            )
+            app.withdraw()
+            app.update()
+            try:
+                product_id = app.db.add_product("Etiqueta individual", 7590)
+                app.refresh_products()
+                item_id = str(product_id)
+                values = app.products.item(item_id, "values")
+
+                with patch.object(
+                    app.products, "identify_region", return_value="cell"
+                ), patch.object(
+                    app.products, "identify_column", return_value="#6"
+                ), patch.object(
+                    app.products, "identify_row", return_value=item_id
+                ), patch("sales_control.app.product_label_pdf") as generator, patch.object(
+                    app, "open_pdf_for_printing"
+                ) as opener:
+                    result = app._product_table_click(SimpleNamespace(x=10, y=10))
+
+                self.assertEqual("break", result)
+                generated_path, generated_product = generator.call_args.args
+                self.assertEqual(values[1], generated_product["name"])
+                self.assertEqual(values[3], generated_product["barcode"])
+                self.assertEqual(generated_path, opener.call_args.args[0])
+                self.assertEqual(
+                    "Etiqueta térmica 40 x 25 mm",
+                    opener.call_args.kwargs["document_title"],
+                )
             finally:
                 app.destroy()
 

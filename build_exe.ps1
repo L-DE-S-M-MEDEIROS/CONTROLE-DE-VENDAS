@@ -30,7 +30,7 @@ if ($LASTEXITCODE -ne 0) {
 if ($LASTEXITCODE -ne 0) { throw "A análise estática encontrou erros; o instalador não será gerado." }
 & $Python -m unittest discover -v
 if ($LASTEXITCODE -ne 0) { throw "Os testes falharam; o instalador não será gerado." }
-& $Python -m PyInstaller --noconfirm --clean --windowed --onefile --collect-submodules "reportlab.graphics.barcode" --name "ControleDeVendas" --distpath "work\payload" --workpath "work\pyinstaller" --specpath "work" main.py
+& $Python -m PyInstaller --noconfirm --clean --windowed --onefile --collect-submodules "reportlab.graphics.barcode" --collect-data "reportlab" --name "ControleDeVendas" --distpath "work\payload" --workpath "work\pyinstaller" --specpath "work" main.py
 if ($LASTEXITCODE -ne 0) { throw "Falha ao gerar o aplicativo." }
 $Payload = (Resolve-Path "work\payload\ControleDeVendas.exe").Path
 $SmokeTest = Start-Process -FilePath $Payload -ArgumentList "--smoke-test" -Wait -PassThru -WindowStyle Hidden

@@ -955,10 +955,12 @@ class App(tk.Tk):
         self.report_client.grid(row=1, column=2, sticky="ew", padx=(12, 10), pady=(0, 15))
         ttk.Button(filter_box, text="CONSULTAR", style="Accent.TButton", command=self.run_report).grid(row=1, column=3, padx=(0, 15), pady=(0, 15))
 
-        self.report_tree = ttk.Treeview(panel, columns=("client", "total"), show="headings", height=6)
+        self.report_tree = ttk.Treeview(panel, columns=("client", "products", "total"), show="headings", height=6)
         self.report_tree.heading("client", text="CLIENTE", anchor="center")
+        self.report_tree.heading("products", text="PRODUTOS", anchor="center")
         self.report_tree.heading("total", text="VALOR COMPRADO", anchor="center")
-        self.report_tree.column("client", width=self.px(850), anchor="center")
+        self.report_tree.column("client", width=self.px(700), anchor="center")
+        self.report_tree.column("products", width=self.px(180), anchor="center")
         self.report_tree.column("total", width=self.px(260), anchor="center")
         self.report_tree.pack(fill="both", expand=True, padx=22)
         footer = tk.Frame(panel, bg=PANEL)
@@ -1567,7 +1569,15 @@ class App(tk.Tk):
             for item in self.report_tree.get_children():
                 self.report_tree.delete(item)
             for row in self.report_rows:
-                self.report_tree.insert("", "end", values=(row["client_name"], money(row["total_cents"])))
+                self.report_tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        row["client_name"],
+                        row["product_count"],
+                        money(row["total_cents"]),
+                    ),
+                )
             total = sum(row["total_cents"] for row in self.report_rows)
             self.report_total.config(text=f"TOTAL BRUTO: {money(total)}")
             return True
@@ -1596,7 +1606,6 @@ class App(tk.Tk):
                     self.report_rows,
                     iso_date(self.start.get()),
                     iso_date(self.end.get()),
-                    self.report_client.get(),
                 )
                 self.open_pdf_for_printing(path)
             except Exception as exc:

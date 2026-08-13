@@ -1,9 +1,25 @@
 from __future__ import annotations
 
 import sqlite3
+import unicodedata
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
+
+
+def _sortable_name(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value).casefold())
+    return "".join(character for character in normalized if not unicodedata.combining(character))
+
+
+def _client_report_sort_key(row):
+    """Group platform accounts by the person's final name, then platform."""
+    full_name = " ".join(str(row["client_name"]).split())
+    platform, separator, person = full_name.rpartition(" ")
+    if not separator:
+        platform = full_name
+        person = full_name
+    return _sortable_name(person), _sortable_name(platform), _sortable_name(full_name)
 
 
 class Database:
@@ -307,15 +323,23 @@ class Database:
             raise ValueError("Informe um período válido no formato AAAA-MM-DD.") from exc
         if start_date > end_date:
             raise ValueError("A data inicial não pode ser posterior à data final.")
-        sql = """SELECT c.id client_id, c.name client_name, SUM(s.total_cents) total_cents
-                 FROM sales s JOIN clients c ON c.id=s.client_id
+        sql = """SELECT c.id client_id, c.name client_name,
+                        SUM(s.total_cents) total_cents,
+                        COALESCE(SUM(items.product_count), 0) product_count
+                 FROM sales s
+                 JOIN clients c ON c.id=s.client_id
+                 LEFT JOIN (
+                     SELECT sale_id, SUM(quantity) product_count
+                     FROM sale_items
+                     GROUP BY sale_id
+                 ) items ON items.sale_id=s.id
                  WHERE s.sale_date BETWEEN ? AND ?"""
         args = [start, end]
         if client_id is not None:
             sql += " AND c.id=?"
             args.append(client_id)
-        sql += " GROUP BY c.id, c.name ORDER BY c.name"
-        return self._all(sql, args)
+        sql += " GROUP BY c.id, c.name"
+        return sorted(self._all(sql, args), key=_client_report_sort_key)
 
     def dashboard_stats(self, month_start: str, month_end: str):
         with self.connect() as db:

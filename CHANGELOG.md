@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## 1.5.5 — 2026-08-13
+
+- relatório de faturamento passa a somar e exibir a quantidade total de produtos comprados por cliente;
+- período do PDF simplificado para o nome do mês, como **AGOSTO**;
+- linha de filtro removida do relatório impresso;
+- contas ordenadas e agrupadas pelo nome da pessoa e, dentro do grupo, pela plataforma;
+- fonte incorporada ao PDF para preservar corretamente nomes acentuados, como **JOÃO**.
+
 ## 1.5.4 — 2026-08-13
 
 - campos de data de vendas e relatórios alterados para o formato brasileiro `dd/mm/aa`;

@@ -10,7 +10,7 @@ def bundled_smoke_test() -> int:
     try:
         from sales_control.app import App  # noqa: F401
         from sales_control.database import Database
-        from sales_control.reports import product_label_pdf
+        from sales_control.reports import product_label_pdf, revenue_pdf
         from sales_control.updater import configured_repository
 
         with tempfile.TemporaryDirectory(prefix="VendasPRO-Smoke-") as folder:
@@ -22,7 +22,7 @@ def bundled_smoke_test() -> int:
                 for row in database.list_products()
                 if row["id"] == product_id
             )
-            client_id = database.add_client("CLIENTE DE TESTE")
+            client_id = database.add_client("AMAZON JOÃO")
             database.save_sale(
                 client_id,
                 "2026-01-01",
@@ -35,9 +35,11 @@ def bundled_smoke_test() -> int:
                     }
                 ],
             )
-            if database.revenue_report("2026-01-01", "2026-01-31")[0][
-                "total_cents"
-            ] != 3980:
+            report_rows = database.revenue_report("2026-01-01", "2026-01-31")
+            if (
+                report_rows[0]["total_cents"] != 3980
+                or report_rows[0]["product_count"] != 2
+            ):
                 return 2
             if not database.backup(root / "backups").is_file():
                 return 3
@@ -49,6 +51,15 @@ def bundled_smoke_test() -> int:
             )
             if not output.exists() or output.stat().st_size < 1000:
                 return 4
+            revenue_output = root / "faturamento_teste.pdf"
+            revenue_pdf(
+                revenue_output,
+                report_rows,
+                "2026-01-01",
+                "2026-01-31",
+            )
+            if not revenue_output.exists() or revenue_output.stat().st_size < 1000:
+                return 6
             if "/" not in configured_repository():
                 return 5
         return 0

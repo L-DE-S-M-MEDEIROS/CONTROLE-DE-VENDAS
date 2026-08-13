@@ -1,4 +1,4 @@
-# Vendas PRO 1.5.4 — instalação e atualizações
+# Vendas PRO 1.5.5 — instalação e atualizações
 
 ## Instalar em outro computador
 
@@ -45,6 +45,13 @@ Clientes, produtos, vendas e backups ficam em `%LOCALAPPDATA%\ControleDeVendas`,
 6. Confira a Release e não reutilize uma tag já distribuída.
 
 O repositório está público, portanto o aplicativo não precisa e não contém token. Se ele se tornar privado, use um serviço intermediário com GitHub App e token de instalação temporário; nunca coloque PAT, senha ou chave administrativa dentro do EXE.
+
+## Novidades da versão 1.5.5
+
+- nova coluna **PRODUTOS** no faturamento, somando todas as unidades compradas;
+- período impresso apenas pelo nome do mês e sem a linha “Filtro: Todos os clientes”;
+- clientes agrupados por pessoa e ordenados por plataforma;
+- nomes acentuados preservados no PDF em navegadores e impressoras.
 
 ## Novidades da versão 1.5.4
 

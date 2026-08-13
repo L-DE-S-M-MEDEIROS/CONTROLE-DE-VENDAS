@@ -89,6 +89,15 @@ class InterfaceTests(unittest.TestCase):
                 app.end_date_field.entry.set_date("31/08/26")
                 self.assertTrue(app.run_report())
                 self.assertEqual(3000, app.report_rows[0]["total_cents"])
+                self.assertEqual(2, app.report_rows[0]["product_count"])
+                self.assertEqual(
+                    ("client", "products", "total"),
+                    app.report_tree["columns"],
+                )
+                report_values = app.report_tree.item(
+                    app.report_tree.get_children()[0], "values"
+                )
+                self.assertEqual("2", str(report_values[1]))
             finally:
                 app.destroy()
 

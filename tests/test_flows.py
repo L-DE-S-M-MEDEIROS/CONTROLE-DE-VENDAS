@@ -55,10 +55,11 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(5150, self.db.get_sale(sale)[0]["total_cents"])
         rows = self.db.revenue_report("2026-08-01", "2026-08-31", client)
         self.assertEqual(5150, rows[0]["total_cents"])
+        self.assertEqual(5, rows[0]["product_count"])
         stats = self.db.dashboard_stats("2026-08-01", "2026-08-31")
         self.assertEqual((2, 1, 1, 5150), (stats["products"], stats["clients"], stats["sales"], stats["revenue_cents"]))
         product_pdf(self.root / "products.pdf", products)
-        revenue_pdf(self.root / "revenue.pdf", rows, "2026-08-01", "2026-08-31", "Cliente Teste")
+        revenue_pdf(self.root / "revenue.pdf", rows, "2026-08-01", "2026-08-31")
         self.assertGreater((self.root / "products.pdf").stat().st_size, 1000)
         self.assertGreater((self.root / "revenue.pdf").stat().st_size, 1000)
         self.assertTrue(self.db.backup(self.root / "backup").exists())
@@ -66,6 +67,58 @@ class FlowTests(unittest.TestCase):
         self.assertEqual([], self.db.list_sales())
         self.db.delete_client(client)
         self.assertEqual([], self.db.list_clients())
+
+    def test_revenue_report_counts_products_and_groups_accounts_by_person(self):
+        product = self.db.add_product("Produto", 1000)
+        accounts = (
+            ("SHOPEE YURI", 4),
+            ("SHOPEE JOÃO", 2),
+            ("MERCADO LIVRE YURI", 3),
+            ("AMAZON JOÃO", 1),
+            ("TIKTOK LARISSI", 5),
+        )
+        for client_name, quantity in accounts:
+            client = self.db.add_client(client_name)
+            self.db.save_sale(
+                client,
+                "2026-08-13",
+                [
+                    {
+                        "product_id": product,
+                        "product_name": "Produto",
+                        "quantity": quantity,
+                        "unit_price_cents": 1000,
+                    }
+                ],
+            )
+
+        rows = self.db.revenue_report("2026-08-01", "2026-08-31")
+        self.assertEqual(
+            [
+                "AMAZON JOÃO",
+                "SHOPEE JOÃO",
+                "TIKTOK LARISSI",
+                "MERCADO LIVRE YURI",
+                "SHOPEE YURI",
+            ],
+            [row["client_name"] for row in rows],
+        )
+        self.assertEqual([1, 2, 5, 3, 4], [row["product_count"] for row in rows])
+
+        pdf_path = revenue_pdf(
+            self.root / "faturamento_agrupado.pdf",
+            rows,
+            "2026-08-01",
+            "2026-08-31",
+        )
+        text = "\n".join(
+            page.extract_text() or "" for page in PdfReader(pdf_path).pages
+        )
+        self.assertIn("Período: AGOSTO", text)
+        self.assertIn("PRODUTOS", text)
+        self.assertIn("AMAZON JOÃO", text)
+        self.assertNotIn("Filtro:", text)
+        self.assertNotIn("Todos os clientes", text)
 
     def test_update_release_detection(self):
         release = {

@@ -2,14 +2,61 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from tkinter import ttk
 from unittest.mock import patch
 
 from installer_launcher import InstallerWindow
 from sales_control.app import App
-from sales_control.theme import ThemePreferences
+from sales_control.theme import ThemePreferences, get_theme
 
 
 class InterfaceTests(unittest.TestCase):
+    def test_active_sales_tab_is_larger_and_uses_theme_accent(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "tabs.db",
+                maximize=False,
+                dpi_scale_override=1.0,
+            )
+            app.withdraw()
+            try:
+                for theme_key in ("light", "dark"):
+                    app.change_theme(theme_key)
+                    app.update_idletasks()
+                    style = ttk.Style(app)
+                    selected_padding = style.lookup(
+                        "Inner.TNotebook.Tab", "padding", ("selected",)
+                    )
+                    inactive_padding = style.lookup(
+                        "Inner.TNotebook.Tab", "padding", ("!selected",)
+                    )
+                    if not isinstance(selected_padding, (tuple, list)):
+                        selected_padding = app.tk.splitlist(selected_padding)
+                    if not isinstance(inactive_padding, (tuple, list)):
+                        inactive_padding = app.tk.splitlist(inactive_padding)
+                    selected_padding = tuple(int(str(value)) for value in selected_padding)
+                    inactive_padding = tuple(int(str(value)) for value in inactive_padding)
+
+                    palette = get_theme(theme_key)
+                    self.assertGreater(selected_padding[0], inactive_padding[0])
+                    self.assertGreater(selected_padding[1], inactive_padding[1])
+                    self.assertEqual(
+                        palette["accent"],
+                        style.lookup(
+                            "Inner.TNotebook.Tab", "background", ("selected",)
+                        ),
+                    )
+                    self.assertEqual(
+                        palette["soft"],
+                        style.lookup(
+                            "Inner.TNotebook.Tab", "background", ("!selected",)
+                        ),
+                    )
+            finally:
+                app.destroy()
+
     def test_theme_persists_and_all_table_columns_are_centered(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"LOCALAPPDATA": folder}, clear=False

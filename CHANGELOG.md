@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## 1.4.1 — 2026-08-13
+
+- aba interna selecionada agora fica maior e recebe a cor de destaque do tema;
+- abas internas não selecionadas ficam menores e em cinza, facilitando a identificação da tela ativa.
+
 ## 1.4.0 — 2026-08-13
 
 - dois temas persistentes: Dark grafite com azul neon e Light off-white com verde-oliva;

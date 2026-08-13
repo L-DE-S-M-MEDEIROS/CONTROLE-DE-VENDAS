@@ -1,4 +1,4 @@
-# Vendas PRO 1.4.0 — instalação e atualizações
+# Vendas PRO 1.4.1 — instalação e atualizações
 
 ## Instalar em outro computador
 
@@ -27,7 +27,7 @@ Clientes, produtos, vendas e backups ficam em `%LOCALAPPDATA%\ControleDeVendas`,
 
 ## Publicar a próxima versão
 
-1. Altere `__version__` em `sales_control/__init__.py`, usando Semantic Versioning, por exemplo `1.4.0`.
+1. Altere `__version__` em `sales_control/__init__.py`, usando Semantic Versioning, por exemplo `1.4.1`.
 2. Atualize `CHANGELOG.md`.
 3. Execute:
 
@@ -37,7 +37,7 @@ Clientes, produtos, vendas e backups ficam em `%LOCALAPPDATA%\ControleDeVendas`,
    ```
 
 4. Envie o código para a branch `main` do repositório `L-DE-S-M-MEDEIROS/CONTROLE-DE-VENDAS`.
-5. O GitHub Actions criará a tag `v1.4.0`, a Release, o changelog automático e os anexos:
+5. O GitHub Actions criará a tag `v1.4.1`, a Release, o changelog automático e os anexos:
 
    - `ControleDeVendas-Setup.exe`
    - `SHA256.txt`
@@ -45,6 +45,11 @@ Clientes, produtos, vendas e backups ficam em `%LOCALAPPDATA%\ControleDeVendas`,
 6. Confira a Release e não reutilize uma tag já distribuída.
 
 O repositório está público, portanto o aplicativo não precisa e não contém token. Se ele se tornar privado, use um serviço intermediário com GitHub App e token de instalação temporário; nunca coloque PAT, senha ou chave administrativa dentro do EXE.
+
+## Novidades da versão 1.4.1
+
+- aba selecionada maior e colorida com a cor de destaque do tema;
+- abas não selecionadas menores e em cinza.
 
 ## Novidades da versão 1.4.0
 

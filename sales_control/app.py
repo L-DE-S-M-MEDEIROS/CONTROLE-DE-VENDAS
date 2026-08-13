@@ -240,9 +240,21 @@ class App(tk.Tk):
         self._build_settings()
         self.refresh_all()
         self.show_page("home")
+        self._startup_jobs = []
         if maximize:
-            self.after(80, self._maximize_window)
-        self.after(3000, lambda: self.check_updates(silent=True))
+            self._startup_jobs.append(self.after(80, self._maximize_window))
+        self._startup_jobs.append(
+            self.after(3000, lambda: self.check_updates(silent=True))
+        )
+
+    def destroy(self):
+        for job in getattr(self, "_startup_jobs", ()):
+            try:
+                self.after_cancel(job)
+            except tk.TclError:
+                pass
+        self._startup_jobs = []
+        super().destroy()
 
     def px(self, value):
         return max(1, int(round(value * self.dpi_scale)))
@@ -274,9 +286,33 @@ class App(tk.Tk):
         style.map("Treeview", background=[("selected", SELECTED)], foreground=[("selected", TEXT)])
         style.configure("Treeview.Heading", font=(FONT_FAMILY, 10, "bold"), background=HEADING, foreground=TEXT, padding=(self.px(12), self.px(12)), borderwidth=0)
         style.map("Treeview.Heading", background=[("active", SOFT_HOVER)])
-        style.configure("Inner.TNotebook", background=PANEL, borderwidth=0, tabmargins=(0, 0, 0, self.px(8)))
-        style.configure("Inner.TNotebook.Tab", font=(FONT_FAMILY, 10, "bold"), padding=(self.px(24), self.px(13)), background=HEADING, foreground=MUTED, borderwidth=0)
-        style.map("Inner.TNotebook.Tab", background=[("selected", BLUE)], foreground=[("selected", "white")])
+        style.configure(
+            "Inner.TNotebook",
+            background=PANEL,
+            borderwidth=0,
+            tabmargins=(0, self.px(8), 0, self.px(8)),
+        )
+        style.configure(
+            "Inner.TNotebook.Tab",
+            font=(FONT_FAMILY, 10, "bold"),
+            padding=(self.px(20), self.px(10)),
+            background=SOFT,
+            foreground=MUTED,
+            borderwidth=0,
+        )
+        style.map(
+            "Inner.TNotebook.Tab",
+            background=[
+                ("selected", BLUE),
+                ("active", SOFT_HOVER),
+                ("!selected", SOFT),
+            ],
+            foreground=[("selected", "white"), ("!selected", MUTED)],
+            padding=[
+                ("selected", (self.px(28), self.px(17))),
+                ("!selected", (self.px(20), self.px(10))),
+            ],
+        )
         style.configure("Panel.TLabelframe", background=PANEL, bordercolor=BORDER, borderwidth=1, relief="solid")
         style.configure("Panel.TLabelframe.Label", background=PANEL, foreground=TEXT, font=(FONT_FAMILY, 10, "bold"))
         style.configure("Horizontal.TProgressbar", background=BLUE, troughcolor=SOFT, bordercolor=SOFT, lightcolor=BLUE, darkcolor=BLUE)

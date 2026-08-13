@@ -663,19 +663,38 @@ class App(tk.Tk):
         search_entry.bind("<KeyRelease>", lambda _event: self.refresh_products())
         ttk.Button(toolbar, text="Gerar lista A4 (PDF)", command=self.product_report).pack(side="right")
 
-        self.products = ttk.Treeview(panel, columns=("id", "name", "price", "barcode"), show="headings", height=6)
+        self.products = ttk.Treeview(
+            panel,
+            columns=("id", "name", "price", "barcode", "copy"),
+            show="headings",
+            height=6,
+        )
         for column, title, width, anchor in [
-            ("id", "ID", self.px(80), "w"), ("name", "PRODUTO", self.px(650), "w"), ("price", "PREÇO", self.px(180), "e"), ("barcode", "CÓDIGO DE BARRAS", self.px(260), "w")
+            ("id", "ID", self.px(70), "center"),
+            ("name", "PRODUTO", self.px(520), "center"),
+            ("price", "PREÇO", self.px(160), "center"),
+            ("barcode", "CÓDIGO DE BARRAS", self.px(270), "center"),
+            ("copy", "", self.px(90), "center"),
         ]:
             self.products.heading(column, text=title, anchor="center")
             self.products.column(column, width=width, anchor="center")
         self.products.pack(fill="both", expand=True, padx=22, pady=(0, 10))
-        self.products.bind("<Double-1>", lambda _event: self.edit_product())
+        self.products.bind("<ButtonRelease-1>", self._product_table_click)
+        self.products.bind("<Double-1>", self._product_table_double_click)
+        self.products.bind("<Motion>", self._product_table_motion)
+        self.products.bind("<Leave>", lambda _event: self.products.configure(cursor=""))
         actions = tk.Frame(panel, bg=PANEL)
         actions.pack(fill="x", padx=22, pady=(0, 20))
         ttk.Button(actions, text="Editar produto", style="Accent.TButton", command=self.edit_product).pack(side="left")
-        ttk.Button(actions, text="Copiar código", command=self.copy_product_barcode).pack(side="left", padx=8)
-        ttk.Button(actions, text="Excluir produto", style="Danger.TButton", command=self.delete_product).pack(side="left")
+        ttk.Button(actions, text="Excluir produto", style="Danger.TButton", command=self.delete_product).pack(side="left", padx=8)
+        self.product_copy_status = tk.Label(
+            actions,
+            text="",
+            bg=PANEL,
+            fg=GREEN,
+            font=(FONT_FAMILY, 9, "bold"),
+        )
+        self.product_copy_status.pack(side="left", padx=self.px(8))
 
     def _build_clients(self):
         page = self._new_page("clients")
@@ -1071,7 +1090,11 @@ class App(tk.Tk):
                 self.products.focus(str(product_id))
                 self.products.see(str(product_id))
             self.refresh_dashboard()
-            messagebox.showinfo("Produto cadastrado", f"Código gerado automaticamente:\n{product['barcode']}\n\nO produto ficou selecionado. Use “Copiar código” quando desejar.")
+            messagebox.showinfo(
+                "Produto cadastrado",
+                f"Código gerado automaticamente:\n{product['barcode']}\n\n"
+                "Use o ícone ⧉ ao lado do produto para copiar o código.",
+            )
         except Exception as exc:
             messagebox.showerror("Produto", str(exc))
 
@@ -1080,7 +1103,49 @@ class App(tk.Tk):
             self.products.delete(item)
         search = self.search.get() if hasattr(self, "search") else ""
         for product in self.db.list_products(search):
-            self.products.insert("", "end", iid=str(product["id"]), values=(product["id"], product["name"], money(product["price_cents"]), product["barcode"]))
+            self.products.insert(
+                "",
+                "end",
+                iid=str(product["id"]),
+                values=(
+                    product["id"],
+                    product["name"],
+                    money(product["price_cents"]),
+                    product["barcode"],
+                    "⧉",
+                ),
+            )
+
+    def _product_table_click(self, event):
+        if self.products.identify_region(event.x, event.y) != "cell":
+            return None
+        if self.products.identify_column(event.x) != "#5":
+            return None
+        item_id = self.products.identify_row(event.y)
+        if not item_id:
+            return None
+        self.products.selection_set(item_id)
+        self.products.focus(item_id)
+        self.copy_product_barcode(item_id=item_id, notify=False)
+        return "break"
+
+    def _product_table_double_click(self, event):
+        if self.products.identify_column(event.x) == "#5":
+            return "break"
+        item_id = self.products.identify_row(event.y)
+        if item_id:
+            self.products.selection_set(item_id)
+            self.products.focus(item_id)
+            self.edit_product()
+        return None
+
+    def _product_table_motion(self, event):
+        is_copy_icon = (
+            self.products.identify_region(event.x, event.y) == "cell"
+            and self.products.identify_column(event.x) == "#5"
+            and bool(self.products.identify_row(event.y))
+        )
+        self.products.configure(cursor="hand2" if is_copy_icon else "")
 
     def _selected(self, tree):
         selected = tree.selection()
@@ -1104,15 +1169,21 @@ class App(tk.Tk):
         except Exception as exc:
             messagebox.showerror("Produto", str(exc))
 
-    def copy_product_barcode(self):
-        row = self._selected(self.products)
+    def copy_product_barcode(self, item_id=None, notify=True):
+        if item_id and self.products.exists(str(item_id)):
+            row = self.products.item(str(item_id), "values")
+        else:
+            row = self._selected(self.products)
         if not row:
             return messagebox.showwarning("Produto", "Selecione o produto cujo código deseja copiar.")
         code = str(row[3])
         self.clipboard_clear()
         self.clipboard_append(code)
         self.update_idletasks()
-        messagebox.showinfo("Código copiado", f"O código {code} foi copiado para a área de transferência.")
+        if hasattr(self, "product_copy_status"):
+            self.product_copy_status.config(text=f"Código {code} copiado")
+        if notify:
+            messagebox.showinfo("Código copiado", f"O código {code} foi copiado para a área de transferência.")
 
     def delete_product(self):
         row = self._selected(self.products)

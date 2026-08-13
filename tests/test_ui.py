@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from tkinter import ttk
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from installer_launcher import InstallerWindow
@@ -148,6 +149,41 @@ class InterfaceTests(unittest.TestCase):
                 with patch("sales_control.app.messagebox.showinfo"):
                     app.copy_product_barcode()
                 self.assertEqual(str(expected), app.clipboard_get())
+            finally:
+                app.destroy()
+
+    def test_product_row_has_clickable_copy_icon(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "copy_icon.db",
+                maximize=False,
+                dpi_scale_override=1.0,
+            )
+            app.withdraw()
+            app.update()
+            try:
+                product_id = app.db.add_product("Produto com ícone", 4590)
+                app.refresh_products()
+                item_id = str(product_id)
+                values = app.products.item(item_id, "values")
+                self.assertEqual("copy", app.products["columns"][-1])
+                self.assertEqual("", app.products.heading("copy", "text"))
+                self.assertEqual("⧉", values[4])
+
+                with patch.object(
+                    app.products, "identify_region", return_value="cell"
+                ), patch.object(
+                    app.products, "identify_column", return_value="#5"
+                ), patch.object(
+                    app.products, "identify_row", return_value=item_id
+                ):
+                    result = app._product_table_click(SimpleNamespace(x=10, y=10))
+
+                self.assertEqual("break", result)
+                self.assertEqual(str(values[3]), app.clipboard_get())
+                self.assertIn(str(values[3]), app.product_copy_status.cget("text"))
             finally:
                 app.destroy()
 

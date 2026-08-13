@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## 1.4.2 — 2026-08-13
+
+- ícone de cópia adicionado ao lado de cada produto na tabela;
+- clique no ícone copia diretamente o código do produto correto e mostra uma confirmação discreta.
+
 ## 1.4.1 — 2026-08-13
 
 - aba interna selecionada agora fica maior e recebe a cor de destaque do tema;

@@ -1,6 +1,8 @@
 import hashlib
+import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,7 +16,13 @@ from sales_control.reports import (
     product_pdf,
     revenue_pdf,
 )
-from sales_control.updater import UpdateError, UpdateInfo, check_for_update, download_update
+from sales_control.updater import (
+    MAX_INSTALLER_SIZE,
+    UpdateError,
+    UpdateInfo,
+    check_for_update,
+    download_update,
+)
 
 
 class FlowTests(unittest.TestCase):
@@ -93,7 +101,7 @@ class FlowTests(unittest.TestCase):
 
     def test_verified_update_download(self):
         installer_source = self.root / "source-setup.exe"
-        installer_source.write_bytes(b"instalador-seguro")
+        installer_source.write_bytes(b"MZ-installer-seguro")
         checksum = self.root / "SHA256.txt"
         checksum.write_text(hashlib.sha256(installer_source.read_bytes()).hexdigest() + "  ControleDeVendas-Setup.exe", encoding="ascii")
         info = UpdateInfo("2.0.0", "Versão 2", "Teste", installer_source.as_uri(), "ControleDeVendas-Setup.exe", installer_source.stat().st_size, checksum.as_uri(), "https://github.com/empresa/app/releases/tag/v2.0.0")
@@ -103,12 +111,116 @@ class FlowTests(unittest.TestCase):
 
     def test_tampered_update_is_rejected(self):
         installer_source = self.root / "tampered.exe"
-        installer_source.write_bytes(b"arquivo-adulterado")
+        installer_source.write_bytes(b"MZ-arquivo-adulterado")
         checksum = self.root / "SHA256.txt"
         checksum.write_text("0" * 64 + "  ControleDeVendas-Setup.exe", encoding="ascii")
         info = UpdateInfo("2.0.0", "Versão 2", "Teste", installer_source.as_uri(), "ControleDeVendas-Setup.exe", installer_source.stat().st_size, checksum.as_uri(), "https://github.com/empresa/app/releases/tag/v2.0.0")
         with self.assertRaises(UpdateError):
             download_update(info)
+
+    def test_non_windows_update_and_oversized_asset_are_rejected(self):
+        invalid_source = self.root / "invalid.exe"
+        invalid_source.write_bytes(b"conteudo-que-nao-e-executavel")
+        checksum = self.root / "SHA256.txt"
+        checksum.write_text(
+            hashlib.sha256(invalid_source.read_bytes()).hexdigest()
+            + "  ControleDeVendas-Setup.exe",
+            encoding="ascii",
+        )
+        invalid_info = UpdateInfo(
+            "2.0.0",
+            "Versão 2",
+            "Teste",
+            invalid_source.as_uri(),
+            "ControleDeVendas-Setup.exe",
+            invalid_source.stat().st_size,
+            checksum.as_uri(),
+            "https://github.com/empresa/app/releases/tag/v2.0.0",
+        )
+        with self.assertRaisesRegex(UpdateError, "Windows válido"):
+            download_update(invalid_info)
+
+        oversized_info = UpdateInfo(
+            "2.0.0",
+            "Versão 2",
+            "Teste",
+            invalid_source.as_uri(),
+            "ControleDeVendas-Setup.exe",
+            MAX_INSTALLER_SIZE + 1,
+            checksum.as_uri(),
+            "https://github.com/empresa/app/releases/tag/v2.0.0",
+        )
+        with self.assertRaisesRegex(UpdateError, "tamanho"):
+            download_update(oversized_info)
+
+    def test_barcode_sequence_does_not_reuse_a_deleted_product_code(self):
+        first_id = self.db.add_product("Produto temporário", 100)
+        first = next(row for row in self.db.list_products() if row["id"] == first_id)
+        self.db.delete_product(first_id)
+        second_id = self.db.add_product("Produto seguinte", 200)
+        second = next(row for row in self.db.list_products() if row["id"] == second_id)
+        self.assertNotEqual(first["barcode"], second["barcode"])
+
+    def test_barcode_sequence_migration_respects_legacy_deleted_ids(self):
+        legacy_path = self.root / "legacy.db"
+        with closing(sqlite3.connect(legacy_path)) as connection:
+            connection.executescript(
+                """
+                CREATE TABLE products (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL COLLATE NOCASE,
+                    price_cents INTEGER NOT NULL CHECK(price_cents >= 0),
+                    barcode TEXT NOT NULL UNIQUE,
+                    active INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                INSERT INTO products(name, price_cents, barcode)
+                VALUES('Produto antigo', 100, '2900000000018');
+                DELETE FROM products;
+                """
+            )
+            connection.commit()
+        migrated = Database(legacy_path)
+        new_id = migrated.add_product("Produto novo", 200)
+        product = next(row for row in migrated.list_products() if row["id"] == new_id)
+        self.assertEqual(Database._barcode_for_serial(2), product["barcode"])
+
+    def test_backups_are_unique_and_valid_even_when_created_immediately(self):
+        first = self.db.backup(self.root / "backups")
+        second = self.db.backup(self.root / "backups")
+        self.assertNotEqual(first, second)
+        self.assertTrue(first.is_file())
+        self.assertTrue(second.is_file())
+
+    def test_database_rejects_invalid_core_data(self):
+        with self.assertRaises(ValueError):
+            self.db.add_product("   ", 100)
+        with self.assertRaises(ValueError):
+            self.db.add_product("Produto", -1)
+        with self.assertRaises(ValueError):
+            self.db.add_client("   ")
+        client = self.db.add_client("Cliente")
+        product = self.db.add_product("Produto", 100)
+        with self.assertRaises(ValueError):
+            self.db.save_sale(
+                client,
+                "data-inválida",
+                [
+                    {
+                        "product_id": product,
+                        "product_name": "Produto",
+                        "quantity": 1,
+                        "unit_price_cents": 100,
+                    }
+                ],
+            )
+
+    def test_database_uses_wal_and_waits_for_short_write_contention(self):
+        with self.db.connect() as connection:
+            journal_mode = connection.execute("PRAGMA journal_mode").fetchone()[0]
+            busy_timeout = connection.execute("PRAGMA busy_timeout").fetchone()[0]
+        self.assertEqual("wal", journal_mode.lower())
+        self.assertEqual(10000, busy_timeout)
 
     def test_archived_client_keeps_sale_history(self):
         product = self.db.add_product("Produto", 1000)

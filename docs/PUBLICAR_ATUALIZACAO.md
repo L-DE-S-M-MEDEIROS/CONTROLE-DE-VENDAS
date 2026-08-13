@@ -4,11 +4,12 @@ O GitHub Releases é a única fonte oficial das atualizações.
 
 ## Publicação automática
 
-1. Escolha um número Semantic Versioning ainda não usado, por exemplo `1.4.0`.
+1. Escolha um número Semantic Versioning ainda não usado, por exemplo `1.5.3`.
 2. Altere `__version__` em `sales_control/__init__.py`.
 3. Registre as novidades em `CHANGELOG.md` e faça os testes locais:
 
    ```powershell
+   python -m ruff check --select E4,E7,E9,F,I,UP,B,C4 main.py installer_launcher.py sales_control tests
    python -m unittest discover -v
    .\build_exe.ps1
    Get-FileHash outputs\ControleDeVendas-Setup.exe -Algorithm SHA256
@@ -16,7 +17,7 @@ O GitHub Releases é a única fonte oficial das atualizações.
    ```
 
 4. Envie as alterações para a branch `main` do repositório `L-DE-S-M-MEDEIROS/CONTROLE-DE-VENDAS`.
-5. O workflow `.github/workflows/release.yml` executará os testes, gerará o aplicativo, criará a tag `v1.4.0` e publicará uma Release com notas automáticas.
+5. O workflow `.github/workflows/release.yml` executará a análise estática, os testes, o `.exe`, o teste do instalador completo, criará a tag e publicará uma Release com notas automáticas. Se a tag já existir, a publicação será bloqueada para não substituir uma versão distribuída.
 6. Confirme na página da Release que existem exatamente estes anexos:
 
    - `ControleDeVendas-Setup.exe`

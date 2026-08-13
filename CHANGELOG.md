@@ -1,5 +1,18 @@
 # Histórico de versões
 
+## 1.5.2 — 2026-08-13
+
+- banco SQLite otimizado com modo WAL, espera segura para gravações simultâneas e novos índices;
+- sequência persistente de códigos de barras, impedindo reutilização mesmo após excluir um produto;
+- backups com nomes sempre únicos e verificação automática de integridade;
+- instalador agora testa a nova versão completa antes de fechar ou substituir o aplicativo atual;
+- rollback protegido por SHA-256 e bloqueado se a cópia anterior estiver corrompida;
+- atualizador reforçado com limite de tamanho, validação de executável Windows e redirecionamentos confiáveis;
+- valores monetários, períodos de relatório, dados obrigatórios e edição de vendas antigas mais robustos;
+- relatórios A4 preparados para nomes longos e caracteres especiais;
+- correção de agendamento de foco da bipagem ao trocar temas ou fechar a janela;
+- análise estática, teste do `.exe` e instalação completa obrigatórios antes de cada GitHub Release.
+
 ## 1.5.1 — 2026-08-13
 
 - correção do executável que falhava ao iniciar por falta do módulo interno `reportlab.graphics.barcode.code93`;

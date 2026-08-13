@@ -7,11 +7,21 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from installer_launcher import InstallerWindow
-from sales_control.app import App
+from sales_control.app import App, parse_money
 from sales_control.theme import ThemePreferences, get_theme
 
 
 class InterfaceTests(unittest.TestCase):
+    def test_money_input_accepts_brazilian_formats_without_float_rounding(self):
+        self.assertEqual(123_456, parse_money("R$ 1.234,56"))
+        self.assertEqual(123_400, parse_money("1.234"))
+        self.assertEqual(1_050, parse_money("10.50"))
+        self.assertEqual(29, parse_money("0,29"))
+        with self.assertRaises(ValueError):
+            parse_money("valor inválido")
+        with self.assertRaises(ValueError):
+            parse_money("12,345")
+
     def test_active_sales_tab_is_larger_and_uses_theme_accent(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"LOCALAPPDATA": folder}, clear=False
@@ -93,6 +103,12 @@ class InterfaceTests(unittest.TestCase):
                 )
             finally:
                 app.destroy()
+
+    def test_invalid_theme_preferences_fall_back_to_light(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "configuracoes.json"
+            path.write_text("[]", encoding="utf-8")
+            self.assertEqual("light", ThemePreferences(path).load())
 
     def test_installer_buttons_fit_at_high_dpi(self):
         window = InstallerWindow(dpi_scale_override=1.75)
@@ -226,6 +242,68 @@ class InterfaceTests(unittest.TestCase):
                     "Etiqueta térmica 40 x 25 mm",
                     opener.call_args.kwargs["document_title"],
                 )
+            finally:
+                app.destroy()
+
+    def test_sale_with_archived_client_can_still_be_opened_and_saved(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "archived_client.db",
+                maximize=False,
+                dpi_scale_override=1.0,
+            )
+            app.withdraw()
+            app.update()
+            try:
+                product = app.db.add_product("Produto", 1000)
+                client = app.db.add_client("Cliente arquivado")
+                sale = app.db.save_sale(
+                    client,
+                    "2026-08-13",
+                    [
+                        {
+                            "product_id": product,
+                            "product_name": "Produto",
+                            "quantity": 1,
+                            "unit_price_cents": 1000,
+                        }
+                    ],
+                )
+                app.db.delete_client(client)
+                app.refresh_clients()
+                app.refresh_sales()
+                app.sales_tree.selection_set(app.sales_tree.get_children()[0])
+                with patch("sales_control.app.messagebox.showinfo"):
+                    app.edit_sale()
+                self.assertEqual("Cliente arquivado", app.sale_client.get())
+                with patch("sales_control.app.messagebox.showinfo"):
+                    app.finish_sale()
+                self.assertEqual(1000, app.db.get_sale(sale)[0]["total_cents"])
+            finally:
+                app.destroy()
+
+    def test_revenue_pdf_is_not_requested_for_an_invalid_period(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "invalid_period.db",
+                maximize=False,
+                dpi_scale_override=1.0,
+            )
+            app.withdraw()
+            app.update()
+            try:
+                app.start.set("2026-08-31")
+                app.end.set("2026-08-01")
+                with patch("sales_control.app.messagebox.showerror") as error, patch(
+                    "sales_control.app.filedialog.asksaveasfilename"
+                ) as save_dialog:
+                    app.revenue_report_pdf()
+                error.assert_called_once()
+                save_dialog.assert_not_called()
             finally:
                 app.destroy()
 

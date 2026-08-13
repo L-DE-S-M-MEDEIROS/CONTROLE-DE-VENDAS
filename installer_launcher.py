@@ -16,7 +16,6 @@ from tkinter import messagebox, ttk
 
 from sales_control import __version__ as APP_VERSION
 
-
 APP_NAME = "Vendas PRO"
 APP_EXE = "ControleDeVendas.exe"
 ROLLBACK_EXE = "ControleDeVendas.rollback.exe"
@@ -110,6 +109,28 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def verify_application(executable: Path, timeout_seconds: int = 60):
+    """Valida recursos críticos antes de substituir a versão instalada."""
+    try:
+        result = subprocess.run(
+            [str(executable), "--smoke-test"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=timeout_seconds,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(
+            "A nova versão não pôde ser validada e a instalação foi cancelada."
+        ) from exc
+    if result.returncode != 0:
+        raise RuntimeError(
+            "A nova versão falhou no teste de inicialização. "
+            "A versão instalada foi mantida."
+        )
+
+
 def register_uninstaller(target_dir: Path, setup_copy: Path):
     if os.getenv("VENDAS_PRO_INSTALL_DIR"):
         return
@@ -132,14 +153,19 @@ def perform_install(progress=None, launch=True):
     target_dir.mkdir(parents=True, exist_ok=True)
     data_dir().mkdir(parents=True, exist_ok=True)
     if progress:
-        progress(15, "Fechando a versão anterior...")
+        progress(10, "Validando a nova versão...")
+    verify_application(source)
+    if progress:
+        progress(25, "Fechando a versão anterior...")
     stop_running_app()
     if progress:
-        progress(40, "Instalando o aplicativo...")
+        progress(45, "Instalando o aplicativo...")
     destination = target_dir / APP_EXE
     temporary = target_dir / f"{APP_EXE}.novo"
     rollback = target_dir / ROLLBACK_EXE
     rollback_temporary = target_dir / f"{ROLLBACK_EXE}.novo"
+    state_path = target_dir / ROLLBACK_STATE
+    state_temporary = target_dir / f"{ROLLBACK_STATE}.novo"
     setup_copy = target_dir / "VendasPRO-Instalador.exe"
     had_previous = destination.is_file()
     replaced = False
@@ -150,7 +176,6 @@ def perform_install(progress=None, launch=True):
             shutil.copy2(destination, rollback_temporary)
             if file_sha256(rollback_temporary) != previous_hash:
                 raise RuntimeError("Não foi possível preservar a versão anterior.")
-            os.replace(rollback_temporary, rollback)
 
         source_hash = file_sha256(source)
         shutil.copy2(source, temporary)
@@ -176,17 +201,27 @@ def perform_install(progress=None, launch=True):
                 "installed_version": APP_VERSION,
                 "data_directory": str(data_dir()),
             }
-            (target_dir / ROLLBACK_STATE).write_text(
+            state_temporary.write_text(
                 json.dumps(state, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
+            os.replace(rollback_temporary, rollback)
+            os.replace(state_temporary, state_path)
+        else:
+            rollback.unlink(missing_ok=True)
+            state_path.unlink(missing_ok=True)
     except Exception:
         temporary.unlink(missing_ok=True)
-        rollback_temporary.unlink(missing_ok=True)
-        if had_previous and rollback.is_file() and replaced:
-            shutil.copy2(rollback, destination)
+        state_temporary.unlink(missing_ok=True)
+        if had_previous and replaced:
+            restore_source = (
+                rollback_temporary if rollback_temporary.is_file() else rollback
+            )
+            if restore_source.is_file():
+                shutil.copy2(restore_source, destination)
         elif not had_previous and replaced:
             destination.unlink(missing_ok=True)
+        rollback_temporary.unlink(missing_ok=True)
         raise
     if progress:
         progress(100, "Instalação concluída.")
@@ -202,6 +237,19 @@ def perform_rollback(silent=False, launch=True):
     failed = target_dir / FAILED_EXE
     if not rollback.is_file():
         raise RuntimeError("Não há uma versão anterior disponível para recuperação.")
+    state_path = target_dir / ROLLBACK_STATE
+    if state_path.is_file():
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                "As informações de recuperação estão corrompidas."
+            ) from exc
+        expected_hash = str(state.get("previous_sha256") or "").lower()
+        if expected_hash and file_sha256(rollback).lower() != expected_hash:
+            raise RuntimeError(
+                "A versão anterior não passou na verificação de integridade."
+            )
     if not silent and not messagebox.askyesno(
         "Restaurar versão anterior",
         "Deseja substituir a versão atual pela cópia anterior? Seus dados serão preservados.",
@@ -215,7 +263,7 @@ def perform_rollback(silent=False, launch=True):
         os.replace(rollback, destination)
         if current_temporary.is_file():
             os.replace(current_temporary, failed)
-        (target_dir / ROLLBACK_STATE).unlink(missing_ok=True)
+        state_path.unlink(missing_ok=True)
     except Exception:
         if current_temporary.is_file() and not destination.is_file():
             os.replace(current_temporary, destination)

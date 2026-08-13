@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-
+from uuid import uuid4
 
 THEMES = {
     "dark": {
@@ -94,6 +94,8 @@ class ThemePreferences:
     def load(self) -> str:
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return "light"
             key = str(data.get("theme", "light"))
             return key if key in THEMES else "light"
         except (OSError, ValueError, TypeError):
@@ -103,9 +105,12 @@ class ThemePreferences:
         if key not in THEMES:
             raise ValueError("Tema inválido.")
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_suffix(".tmp")
-        temporary.write_text(
-            json.dumps({"theme": key}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        os.replace(temporary, self.path)
+        temporary = self.path.with_name(f".{self.path.name}.{uuid4().hex}.tmp")
+        try:
+            temporary.write_text(
+                json.dumps({"theme": key}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            os.replace(temporary, self.path)
+        finally:
+            temporary.unlink(missing_ok=True)

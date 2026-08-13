@@ -6,6 +6,7 @@ Aplicativo desktop para Windows com interface adaptativa para Full HD e 4K, tema
 
 ```powershell
 python -m pip install -r requirements.txt
+python -m ruff check --select E4,E7,E9,F,I,UP,B,C4 main.py installer_launcher.py sales_control tests
 python -m unittest discover -v
 python main.py
 ```

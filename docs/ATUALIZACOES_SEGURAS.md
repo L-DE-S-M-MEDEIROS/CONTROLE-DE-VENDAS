@@ -6,10 +6,11 @@
 2. A versão instalada e a tag publicada são comparadas com Semantic Versioning usando a biblioteca `packaging`.
 3. O programa procura exclusivamente os anexos exatos `ControleDeVendas-Setup.exe` e `SHA256.txt`. Os arquivos automáticos de código-fonte do GitHub não são usados.
 4. A janela de atualização mostra versão instalada, nova versão, descrição, **Baixar atualização** e **Agora não**.
-5. O download mostra progresso. O instalador fica com extensão temporária `.part` e só recebe o nome final depois que seu SHA-256 coincide com o valor publicado.
+5. O download mostra progresso, aceita no máximo 250 MB, valida o cabeçalho de executável Windows e segue somente redirecionamentos para domínios confiáveis do GitHub. O arquivo fica com extensão temporária `.part` e só recebe o nome final depois que seu SHA-256 coincide com o valor publicado.
 6. Depois da validação há uma segunda confirmação: a instalação nunca começa sem autorização do usuário.
 7. Antes de iniciar o instalador, o banco SQLite recebe um backup adicional.
-8. O instalador preserva o executável anterior como `ControleDeVendas.rollback.exe`. Em caso de falha durante a troca, restaura automaticamente essa cópia. Quando disponível, **Configurações → Restaurar versão anterior** executa o rollback.
+8. Antes de fechar o programa atual, o instalador executa um teste isolado da nova versão: banco, venda, backup, etiqueta e módulos de atualização precisam funcionar. Uma versão defeituosa é rejeitada sem tocar no aplicativo instalado.
+9. O instalador preserva o executável anterior como `ControleDeVendas.rollback.exe`. Em caso de falha durante a troca, restaura automaticamente essa cópia. O rollback também confere o SHA-256 da cópia anterior antes de substituir qualquer arquivo. Quando disponível, **Configurações → Restaurar versão anterior** executa a recuperação.
 
 Os dados da empresa permanecem em `%LOCALAPPDATA%\ControleDeVendas`, enquanto o programa fica em `%LOCALAPPDATA%\Programs\Vendas PRO`. Assim, substituir ou recuperar o programa não substitui o banco.
 
@@ -39,5 +40,8 @@ Também é recomendável assinar digitalmente o instalador com um certificado de
 - instalador ou SHA-256 ausente;
 - endereço de download fora dos domínios oficiais do GitHub;
 - download incompleto;
+- arquivo acima do limite, formato diferente de executável Windows ou redirecionamento não confiável;
 - arquivo adulterado ou hash malformado;
+- nova versão que não inicia ou falha em um recurso crítico;
+- cópia de rollback corrompida;
 - falha de instalação, com restauração da cópia anterior.

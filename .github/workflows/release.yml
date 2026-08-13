@@ -9,9 +9,14 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: vendas-pro-release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - name: Baixar o projeto
         uses: actions/checkout@v4
@@ -24,6 +29,9 @@ jobs:
 
       - name: Instalar dependências
         run: pip install -r requirements.txt
+
+      - name: Revisar qualidade do código
+        run: python -m ruff check --select E4,E7,E9,F,I,UP,B,C4 main.py installer_launcher.py sales_control tests
 
       - name: Executar testes
         run: python -m unittest discover -v
@@ -41,6 +49,15 @@ jobs:
           $version = [regex]::Match($content, '__version__\s*=\s*"([^"]+)"').Groups[1].Value
           if (-not $version) { throw "Versão não encontrada" }
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Garantir que a versão ainda não foi publicada
+        shell: pwsh
+        run: |
+          $tag = "v${{ steps.version.outputs.version }}"
+          $existing = git ls-remote --tags origin "refs/tags/$tag"
+          if ($existing) {
+            throw "A versão $tag já existe. Atualize sales_control/__init__.py antes de publicar."
+          }
 
       - name: Gerar aplicativo
         shell: pwsh
@@ -61,6 +78,37 @@ jobs:
         run: |
           $payload = (Resolve-Path "work\payload\ControleDeVendas.exe").Path
           python -m PyInstaller --noconfirm --clean --windowed --onefile --name ControleDeVendas-Setup --add-binary "$payload;." --distpath outputs --workpath work/setup --specpath work installer_launcher.py
+
+      - name: Validar instalação completa
+        shell: pwsh
+        run: |
+          $smokeRoot = Join-Path $env:RUNNER_TEMP ("VendasPRO-Install-Smoke-" + [guid]::NewGuid().ToString("N"))
+          $installDir = Join-Path $smokeRoot "app"
+          $dataDir = Join-Path $smokeRoot "data"
+          New-Item -ItemType Directory -Path $smokeRoot | Out-Null
+          try {
+            $env:VENDAS_PRO_INSTALL_DIR = $installDir
+            $env:VENDAS_PRO_DATA_DIR = $dataDir
+            $env:VENDAS_PRO_SKIP_SHORTCUTS = "1"
+            $env:VENDAS_PRO_SKIP_STOP = "1"
+            $setup = (Resolve-Path "outputs\ControleDeVendas-Setup.exe").Path
+            $install = Start-Process -FilePath $setup -ArgumentList "/VERYSILENT", "/NOLAUNCH" -Wait -PassThru -WindowStyle Hidden
+            if ($install.ExitCode -ne 0) {
+              throw "O instalador completo falhou com código $($install.ExitCode)."
+            }
+            $installedApp = Join-Path $installDir "ControleDeVendas.exe"
+            if (-not (Test-Path $installedApp)) {
+              throw "O instalador não criou o executável no destino de teste."
+            }
+            $smoke = Start-Process -FilePath $installedApp -ArgumentList "--smoke-test" -Wait -PassThru -WindowStyle Hidden
+            if ($smoke.ExitCode -ne 0) {
+              throw "O executável instalado falhou no teste final."
+            }
+          }
+          finally {
+            Remove-Item Env:VENDAS_PRO_INSTALL_DIR, Env:VENDAS_PRO_DATA_DIR, Env:VENDAS_PRO_SKIP_SHORTCUTS, Env:VENDAS_PRO_SKIP_STOP -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $smokeRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
 
       - name: Gerar verificação SHA-256
         shell: pwsh

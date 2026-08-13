@@ -7,6 +7,7 @@ import threading
 import tkinter as tk
 import webbrowser
 from datetime import date, datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
@@ -26,40 +27,42 @@ from .updater import (
     rollback_available,
 )
 
-
 FONT_FAMILY = "Segoe UI"
 
 
 def _apply_palette(theme_key: str):
+    global NAVY, NAVY_LIGHT, BLUE, BLUE_HOVER, BLUE_PRESSED
+    global CYAN, GREEN, GREEN_HOVER, RED, DANGER_BG, DANGER_HOVER
+    global BG, PANEL, TEXT, MUTED, BORDER, FIELD, SOFT, SOFT_HOVER
+    global HEADING, SELECTED, NAV_TEXT, NAV_MUTED, HERO_TEXT, PURPLE, SHADOW
+
     palette = get_theme(theme_key)
-    globals().update(
-        NAVY=palette["navy"],
-        NAVY_LIGHT=palette["navy_light"],
-        BLUE=palette["accent"],
-        BLUE_HOVER=palette["accent_hover"],
-        BLUE_PRESSED=palette["accent_pressed"],
-        CYAN=palette["cyan"],
-        GREEN=palette["success"],
-        GREEN_HOVER=palette["success_hover"],
-        RED=palette["danger"],
-        DANGER_BG=palette["danger_bg"],
-        DANGER_HOVER=palette["danger_hover"],
-        BG=palette["background"],
-        PANEL=palette["panel"],
-        TEXT=palette["text"],
-        MUTED=palette["muted"],
-        BORDER=palette["border"],
-        FIELD=palette["field"],
-        SOFT=palette["soft"],
-        SOFT_HOVER=palette["soft_hover"],
-        HEADING=palette["heading"],
-        SELECTED=palette["selected"],
-        NAV_TEXT=palette["nav_text"],
-        NAV_MUTED=palette["nav_muted"],
-        HERO_TEXT=palette["hero_text"],
-        PURPLE=palette["purple"],
-        SHADOW=palette["shadow"],
-    )
+    NAVY = palette["navy"]
+    NAVY_LIGHT = palette["navy_light"]
+    BLUE = palette["accent"]
+    BLUE_HOVER = palette["accent_hover"]
+    BLUE_PRESSED = palette["accent_pressed"]
+    CYAN = palette["cyan"]
+    GREEN = palette["success"]
+    GREEN_HOVER = palette["success_hover"]
+    RED = palette["danger"]
+    DANGER_BG = palette["danger_bg"]
+    DANGER_HOVER = palette["danger_hover"]
+    BG = palette["background"]
+    PANEL = palette["panel"]
+    TEXT = palette["text"]
+    MUTED = palette["muted"]
+    BORDER = palette["border"]
+    FIELD = palette["field"]
+    SOFT = palette["soft"]
+    SOFT_HOVER = palette["soft_hover"]
+    HEADING = palette["heading"]
+    SELECTED = palette["selected"]
+    NAV_TEXT = palette["nav_text"]
+    NAV_MUTED = palette["nav_muted"]
+    HERO_TEXT = palette["hero_text"]
+    PURPLE = palette["purple"]
+    SHADOW = palette["shadow"]
 
 
 _apply_palette("light")
@@ -83,10 +86,36 @@ def _enable_per_monitor_dpi():
 
 
 def parse_money(text):
-    cleaned = text.strip().replace("R$", "").replace(" ", "")
+    cleaned = str(text).strip().replace("R$", "").replace(" ", "")
+    if not cleaned:
+        raise ValueError("Informe um valor válido.")
     if "," in cleaned:
-        cleaned = cleaned.replace(".", "").replace(",", ".")
-    return int(round(float(cleaned) * 100))
+        if cleaned.count(",") != 1:
+            raise ValueError("Informe um valor válido, como 19,90.")
+        whole, fraction = cleaned.rsplit(",", 1)
+        if len(fraction) > 2:
+            raise ValueError("Use no máximo duas casas decimais.")
+        cleaned = whole.replace(".", "") + "." + (fraction or "0")
+    elif cleaned.count(".") == 1:
+        whole, fraction = cleaned.rsplit(".", 1)
+        if len(fraction) == 3 and fraction.isdigit():
+            cleaned = whole + fraction
+        elif len(fraction) > 2:
+            raise ValueError("Use no máximo duas casas decimais.")
+    elif cleaned.count(".") > 1:
+        groups = cleaned.lstrip("+-").split(".")
+        if not groups[0].isdigit() or any(
+            len(group) != 3 or not group.isdigit() for group in groups[1:]
+        ):
+            raise ValueError("Informe um valor válido, como 1.234,56.")
+        cleaned = cleaned.replace(".", "")
+    try:
+        value = Decimal(cleaned)
+    except InvalidOperation as exc:
+        raise ValueError("Informe um valor válido.") from exc
+    if not value.is_finite():
+        raise ValueError("Informe um valor válido.")
+    return int((value * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
 class UpdateOfferDialog(tk.Toplevel):
@@ -229,6 +258,7 @@ class App(tk.Tk):
         self.nav_buttons = {}
         self.icons = {}
         self.current_page = "home"
+        self._focus_job = None
         self._style()
         self._create_icons()
         self._build_shell()
@@ -248,6 +278,7 @@ class App(tk.Tk):
         )
 
     def destroy(self):
+        self._cancel_barcode_focus()
         for job in getattr(self, "_startup_jobs", ()):
             try:
                 self.after_cancel(job)
@@ -255,6 +286,25 @@ class App(tk.Tk):
                 pass
         self._startup_jobs = []
         super().destroy()
+
+    def _cancel_barcode_focus(self):
+        job = getattr(self, "_focus_job", None)
+        if job is not None:
+            try:
+                self.after_cancel(job)
+            except tk.TclError:
+                pass
+            self._focus_job = None
+
+    def _schedule_barcode_focus(self):
+        self._cancel_barcode_focus()
+
+        def focus_if_visible():
+            self._focus_job = None
+            if self.current_page == "sales" and self.barcode_entry.winfo_exists():
+                self.barcode_entry.focus_set()
+
+        self._focus_job = self.after(100, focus_if_visible)
 
     def px(self, value):
         return max(1, int(round(value * self.dpi_scale)))
@@ -550,7 +600,7 @@ class App(tk.Tk):
         tk.Label(recent_header, text="Vendas recentes", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 12, "bold")).pack(side="left")
         tk.Button(recent_header, text="Ver histórico  ›", bg=PANEL, fg=BLUE, activebackground=PANEL, activeforeground=BLUE_HOVER, relief="flat", borderwidth=0, font=("Segoe UI Semibold", 9), cursor="hand2", command=lambda: self.show_page("sales", history=True)).pack(side="right")
         self.recent_tree = ttk.Treeview(recent, columns=("id", "date", "client", "items", "total"), show="headings", height=6)
-        for column, title, width, anchor in [
+        for column, title, width, _anchor in [
             ("id", "VENDA", self.px(90), "w"), ("date", "DATA", self.px(130), "w"), ("client", "CLIENTE", self.px(520), "w"), ("items", "ITENS", self.px(100), "center"), ("total", "VALOR", self.px(170), "e")
         ]:
             self.recent_tree.heading(column, text=title, anchor="center")
@@ -604,7 +654,7 @@ class App(tk.Tk):
         table_box = tk.Frame(new, bg=PANEL)
         table_box.pack(fill="both", expand=True)
         self.items = ttk.Treeview(table_box, columns=("product", "qty", "unit", "subtotal"), show="headings", height=5)
-        for column, title, width, anchor in [
+        for column, title, width, _anchor in [
             ("product", "PRODUTO", self.px(620), "w"), ("qty", "QUANTIDADE", self.px(140), "center"), ("unit", "VALOR UNITÁRIO", self.px(180), "e"), ("subtotal", "SUBTOTAL", self.px(190), "e")
         ]:
             self.items.heading(column, text=title, anchor="center")
@@ -624,7 +674,7 @@ class App(tk.Tk):
         tk.Label(history_header, text="Vendas registradas", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 13, "bold")).pack(side="left")
         ttk.Button(history_header, text="Atualizar lista", command=self.refresh_sales).pack(side="right")
         self.sales_tree = ttk.Treeview(history, columns=("id", "date", "client", "items", "total"), show="headings", height=6)
-        for column, title, width, anchor in [
+        for column, title, width, _anchor in [
             ("id", "VENDA", self.px(100), "w"), ("date", "DATA", self.px(140), "w"), ("client", "CLIENTE", self.px(600), "w"), ("items", "ITENS", self.px(120), "center"), ("total", "VALOR", self.px(190), "e")
         ]:
             self.sales_tree.heading(column, text=title, anchor="center")
@@ -669,7 +719,7 @@ class App(tk.Tk):
             show="headings",
             height=6,
         )
-        for column, title, width, anchor in [
+        for column, title, width, _anchor in [
             ("id", "ID", self.px(70), "center"),
             ("name", "PRODUTO", self.px(520), "center"),
             ("price", "PREÇO", self.px(160), "center"),
@@ -727,7 +777,7 @@ class App(tk.Tk):
         client_search_entry.bind("<KeyRelease>", lambda _event: self.refresh_client_table())
 
         self.clients_tree = ttk.Treeview(panel, columns=("id", "name", "notes", "created"), show="headings", height=6)
-        for column, title, width, anchor in [
+        for column, title, width, _anchor in [
             ("id", "ID", self.px(80), "w"),
             ("name", "CLIENTE / USUÁRIO", self.px(520), "w"),
             ("notes", "OBSERVAÇÃO", self.px(560), "w"),
@@ -903,6 +953,7 @@ class App(tk.Tk):
         _apply_palette(key)
         self.configure(bg=BG)
 
+        self._cancel_barcode_focus()
         for child in self.winfo_children():
             child.destroy()
         self.pages = {}
@@ -947,6 +998,7 @@ class App(tk.Tk):
             "reports": ("Relatórios", "Faturamento bruto da empresa"),
             "settings": ("Configurações", "Atualizações e recuperação"),
         }
+        self._cancel_barcode_focus()
         self.pages[key].tkraise()
         self.current_page = key
         title, subtitle = titles[key]
@@ -960,7 +1012,7 @@ class App(tk.Tk):
             self.refresh_sales()
             self.sales_inner.select(self.sales_history_tab if history else self.sales_new_tab)
             if not history:
-                self.after(100, self.barcode_entry.focus_set)
+                self._schedule_barcode_focus()
         elif key == "products":
             self.refresh_products()
         elif key == "clients":
@@ -1266,7 +1318,7 @@ class App(tk.Tk):
     def finish_sale(self):
         try:
             client_id = self.client_map.get(self.sale_client.get())
-            if not client_id:
+            if client_id is None:
                 raise ValueError("Selecione ou cadastre um cliente.")
             date.fromisoformat(self.sale_date.get())
             sale_id = self.db.save_sale(client_id, self.sale_date.get(), self.current_items, self.editing_sale_id)
@@ -1292,8 +1344,30 @@ class App(tk.Tk):
         sale, items = self.db.get_sale(sale_id)
         self.editing_sale_id = sale["id"]
         self.sale_date.set(sale["sale_date"])
-        self.sale_client.set(next((name for name, client_id in self.client_map.items() if client_id == sale["client_id"]), ""))
-        self.current_items = [dict(product_id=item["product_id"], product_name=item["product_name"], quantity=item["quantity"], unit_price_cents=item["unit_price_cents"]) for item in items]
+        client_name = next(
+            (
+                name
+                for name, client_id in self.client_map.items()
+                if client_id == sale["client_id"]
+            ),
+            "",
+        )
+        if not client_name:
+            archived_client = self.db.client_by_id(sale["client_id"])
+            if archived_client:
+                client_name = archived_client["name"]
+                self.client_map[client_name] = archived_client["id"]
+                self.sale_client["values"] = list(self.client_map)
+        self.sale_client.set(client_name)
+        self.current_items = [
+            {
+                "product_id": item["product_id"],
+                "product_name": item["product_name"],
+                "quantity": item["quantity"],
+                "unit_price_cents": item["unit_price_cents"],
+            }
+            for item in items
+        ]
         self.refresh_items()
         self.show_page("sales")
         messagebox.showinfo("Editar venda", "A venda foi carregada. Altere os dados e finalize para salvar.")
@@ -1310,8 +1384,6 @@ class App(tk.Tk):
 
     def run_report(self, show_errors=True):
         try:
-            date.fromisoformat(self.start.get())
-            date.fromisoformat(self.end.get())
             client_id = self.report_client_map.get(self.report_client.get())
             self.report_rows = self.db.revenue_report(self.start.get(), self.end.get(), client_id)
             for item in self.report_tree.get_children():
@@ -1320,22 +1392,31 @@ class App(tk.Tk):
                 self.report_tree.insert("", "end", values=(row["client_name"], money(row["total_cents"])))
             total = sum(row["total_cents"] for row in self.report_rows)
             self.report_total.config(text=f"TOTAL BRUTO: {money(total)}")
+            return True
         except Exception as exc:
             if show_errors:
                 messagebox.showerror("Relatório", str(exc))
+            return False
 
     def product_report(self):
         path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")], initialfile="lista_de_produtos.pdf")
         if path:
-            product_pdf(path, self.db.list_products())
-            self.open_pdf_for_printing(path)
+            try:
+                product_pdf(path, self.db.list_products())
+                self.open_pdf_for_printing(path)
+            except Exception as exc:
+                messagebox.showerror("Relatório de produtos", str(exc))
 
     def revenue_report_pdf(self):
-        self.run_report()
+        if not self.run_report():
+            return
         path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")], initialfile="faturamento_bruto.pdf")
         if path:
-            revenue_pdf(path, self.report_rows, self.start.get(), self.end.get(), self.report_client.get())
-            self.open_pdf_for_printing(path)
+            try:
+                revenue_pdf(path, self.report_rows, self.start.get(), self.end.get(), self.report_client.get())
+                self.open_pdf_for_printing(path)
+            except Exception as exc:
+                messagebox.showerror("Relatório de faturamento", str(exc))
 
     def open_pdf_for_printing(
         self,
@@ -1481,8 +1562,11 @@ class App(tk.Tk):
     def backup(self):
         folder = filedialog.askdirectory(title="Escolha a pasta do backup")
         if folder:
-            target = self.db.backup(folder)
-            messagebox.showinfo("Backup", f"Backup criado em:\n{target}")
+            try:
+                target = self.db.backup(folder)
+                messagebox.showinfo("Backup", f"Backup criado em:\n{target}")
+            except Exception as exc:
+                messagebox.showerror("Backup", f"Não foi possível criar o backup: {exc}")
 
 
 def main():

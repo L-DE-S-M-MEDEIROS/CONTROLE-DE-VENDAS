@@ -17,9 +17,9 @@ from packaging.version import InvalidVersion, Version
 
 from .build_config import GITHUB_REPOSITORY
 
-
 INSTALLER_NAME = "ControleDeVendas-Setup.exe"
 CHECKSUM_NAME = "SHA256.txt"
+MAX_INSTALLER_SIZE = 250 * 1024 * 1024
 REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 
@@ -54,6 +54,7 @@ def _request_json(url: str):
     )
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
+            _validated_asset_url(response.geturl())
             return json.load(response)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
@@ -61,6 +62,8 @@ def _request_json(url: str):
         if exc.code == 403:
             raise UpdateError("O GitHub limitou temporariamente a consulta. Tente novamente mais tarde.") from exc
         raise UpdateError(f"O GitHub respondeu com erro {exc.code}.") from exc
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise UpdateError("O GitHub retornou uma resposta inválida.") from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise UpdateError("Não foi possível conectar ao GitHub. Verifique a internet.") from exc
 
@@ -85,6 +88,8 @@ def check_for_update(current_version: str) -> UpdateInfo | None:
         raise UpdateError("O serviço de atualização ainda não foi vinculado corretamente ao GitHub.")
 
     release = _request_json(f"https://api.github.com/repos/{repository}/releases/latest")
+    if not isinstance(release, dict):
+        raise UpdateError("O GitHub retornou dados de atualização inválidos.")
     if release.get("draft") or release.get("prerelease"):
         raise UpdateError("A versão encontrada ainda não é uma publicação estável.")
 
@@ -104,6 +109,12 @@ def check_for_update(current_version: str) -> UpdateInfo | None:
         raise UpdateError("A nova versão não possui o instalador oficial.")
     if not checksum:
         raise UpdateError("A nova versão não possui o arquivo SHA-256 obrigatório.")
+    try:
+        installer_size = int(installer.get("size") or 0)
+    except (TypeError, ValueError) as exc:
+        raise UpdateError("O tamanho do instalador publicado é inválido.") from exc
+    if installer_size <= 0 or installer_size > MAX_INSTALLER_SIZE:
+        raise UpdateError("O tamanho do instalador publicado é inválido.")
 
     return UpdateInfo(
         version=str(remote_version),
@@ -111,7 +122,7 @@ def check_for_update(current_version: str) -> UpdateInfo | None:
         notes=str(release.get("body") or "Atualização disponível.").strip(),
         installer_url=_validated_asset_url(installer.get("browser_download_url")),
         installer_name=INSTALLER_NAME,
-        installer_size=int(installer.get("size") or 0),
+        installer_size=installer_size,
         checksum_url=_validated_asset_url(checksum.get("browser_download_url")),
         release_url=str(release.get("html_url") or ""),
     )
@@ -121,6 +132,8 @@ def _download_bytes(url: str, maximum_size: int = 64 * 1024) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": "Vendas-PRO-Updater"})
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
+            if urllib.parse.urlparse(url).scheme == "https":
+                _validated_asset_url(response.geturl())
             data = response.read(maximum_size + 1)
     except (OSError, urllib.error.URLError, TimeoutError) as exc:
         raise UpdateError("Não foi possível baixar a verificação SHA-256.") from exc
@@ -141,6 +154,8 @@ def _expected_checksum(checksum_text: str, installer_name: str) -> str:
 
 
 def download_update(info: UpdateInfo, progress=None) -> Path:
+    if info.installer_size <= 0 or info.installer_size > MAX_INSTALLER_SIZE:
+        raise UpdateError("O tamanho do instalador publicado é inválido.")
     update_dir = Path(tempfile.gettempdir()) / "VendasPRO-Atualizacao"
     update_dir.mkdir(parents=True, exist_ok=True)
     installer_path = update_dir / INSTALLER_NAME
@@ -156,13 +171,29 @@ def download_update(info: UpdateInfo, progress=None) -> Path:
     request = urllib.request.Request(info.installer_url, headers={"User-Agent": "Vendas-PRO-Updater"})
     digest = hashlib.sha256()
     downloaded = 0
+    executable_header = bytearray()
     try:
         with urllib.request.urlopen(request, timeout=60) as response, open(partial_path, "wb") as output:
-            total = int(response.headers.get("Content-Length") or info.installer_size or 0)
+            if urllib.parse.urlparse(info.installer_url).scheme == "https":
+                _validated_asset_url(response.geturl())
+            try:
+                total = int(
+                    response.headers.get("Content-Length")
+                    or info.installer_size
+                    or 0
+                )
+            except (TypeError, ValueError) as exc:
+                raise UpdateError("O tamanho informado para o download é inválido.") from exc
+            if total <= 0 or total > MAX_INSTALLER_SIZE:
+                raise UpdateError("O tamanho informado para o download é inválido.")
             while True:
                 chunk = response.read(1024 * 256)
                 if not chunk:
                     break
+                if downloaded + len(chunk) > MAX_INSTALLER_SIZE:
+                    raise UpdateError("O instalador excede o limite de tamanho permitido.")
+                if len(executable_header) < 2:
+                    executable_header.extend(chunk[: 2 - len(executable_header)])
                 output.write(chunk)
                 digest.update(chunk)
                 downloaded += len(chunk)
@@ -170,6 +201,8 @@ def download_update(info: UpdateInfo, progress=None) -> Path:
                     progress(downloaded, total)
         if info.installer_size and downloaded != info.installer_size:
             raise UpdateError("O download ficou incompleto. Tente novamente.")
+        if bytes(executable_header) != b"MZ":
+            raise UpdateError("O arquivo baixado não é um instalador do Windows válido.")
         if digest.hexdigest().lower() != expected:
             raise UpdateError("A verificação de segurança SHA-256 da atualização falhou.")
         os.replace(partial_path, installer_path)

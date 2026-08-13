@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import os
@@ -22,6 +23,23 @@ ROLLBACK_EXE = "ControleDeVendas.rollback.exe"
 FAILED_EXE = "ControleDeVendas.failed.exe"
 ROLLBACK_STATE = "rollback.json"
 REGISTRY_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\VendasPRO"
+
+
+def enable_per_monitor_dpi():
+    if os.name != "nt":
+        return
+    try:
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+        return
+    except (AttributeError, OSError):
+        pass
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except (AttributeError, OSError):
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except (AttributeError, OSError):
+            pass
 
 
 def bundled_file(name: str) -> Path:
@@ -235,29 +253,92 @@ def perform_uninstall(silent=False):
 
 
 class InstallerWindow(tk.Tk):
-    def __init__(self):
+    def __init__(self, dpi_scale_override=None):
         super().__init__()
+        detected_dpi = float(dpi_scale_override * 96 if dpi_scale_override else self.winfo_fpixels("1i"))
+        self.dpi_scale = max(1.0, min(3.0, detected_dpi / 96.0))
+        self.tk.call("tk", "scaling", detected_dpi / 72.0)
         self.title(f"Instalar {APP_NAME}")
-        self.geometry("560x330")
+        self.geometry(f"{self.px(660)}x{self.px(440)}")
+        self.minsize(self.px(660), self.px(440))
         self.resizable(False, False)
-        self.configure(bg="#EDF2F7")
-        self.eval("tk::PlaceWindow . center")
-        header = tk.Frame(self, bg="#10243E", height=105)
+        self.configure(bg="#F3F1EA")
+
+        header = tk.Frame(self, bg="#30362C", height=self.px(118))
         header.pack(fill="x")
         header.pack_propagate(False)
-        tk.Label(header, text="VENDAS PRO", bg="#10243E", fg="white", font=("Segoe UI", 24, "bold")).pack(anchor="w", padx=30, pady=(20, 0))
-        tk.Label(header, text=f"Instalador oficial - versão {APP_VERSION}", bg="#10243E", fg="#9CC8E8", font=("Segoe UI", 10)).pack(anchor="w", padx=32)
-        body = tk.Frame(self, bg="white", padx=30, pady=24)
-        body.pack(fill="both", expand=True, padx=18, pady=18)
-        tk.Label(body, text="Instalar o Controle de Vendas neste computador", bg="white", fg="#10243E", font=("Segoe UI Semibold", 13)).pack(anchor="w")
-        tk.Label(body, text="Os dados existentes serão mantidos durante instalações e atualizações.", bg="white", fg="#68798A", font=("Segoe UI", 9)).pack(anchor="w", pady=(5, 18))
-        self.status = tk.Label(body, text="Pronto para instalar.", bg="white", fg="#68798A", font=("Segoe UI", 9))
+        tk.Label(header, text="VENDAS PRO", bg="#30362C", fg="white", font=("Segoe UI", 25, "bold")).pack(anchor="w", padx=self.px(32), pady=(self.px(22), 0))
+        tk.Label(header, text=f"Instalador oficial  •  versão {APP_VERSION}", bg="#30362C", fg="#C3CBB9", font=("Segoe UI", 10)).pack(anchor="w", padx=self.px(34), pady=(self.px(3), 0))
+
+        body = tk.Frame(self, bg="#FFFEFA", padx=self.px(30), pady=self.px(26), highlightthickness=1, highlightbackground="#DDDCD2")
+        body.pack(fill="both", expand=True, padx=self.px(22), pady=self.px(22))
+        tk.Label(body, text="Instalar o Controle de Vendas neste computador", bg="#FFFEFA", fg="#2E332D", font=("Segoe UI", 14, "bold")).pack(anchor="w")
+        tk.Label(
+            body,
+            text="Os dados existentes serão mantidos durante instalações e atualizações.",
+            bg="#FFFEFA",
+            fg="#70776C",
+            font=("Segoe UI", 9),
+            wraplength=self.px(560),
+            justify="left",
+        ).pack(anchor="w", pady=(self.px(6), self.px(22)))
+        self.status = tk.Label(body, text="Pronto para instalar.", bg="#FFFEFA", fg="#70776C", font=("Segoe UI", 9))
         self.status.pack(anchor="w")
-        self.bar = ttk.Progressbar(body, maximum=100, mode="determinate")
-        self.bar.pack(fill="x", pady=(6, 16))
-        self.install_button = ttk.Button(body, text="INSTALAR", command=self.install)
+        style = ttk.Style(self)
+        style.configure("Installer.Horizontal.TProgressbar", background="#6F7C4B", troughcolor="#ECEBE3", bordercolor="#ECEBE3", lightcolor="#6F7C4B", darkcolor="#6F7C4B")
+        self.bar = ttk.Progressbar(body, maximum=100, mode="determinate", style="Installer.Horizontal.TProgressbar")
+        self.bar.pack(fill="x", pady=(self.px(8), self.px(24)))
+
+        actions = tk.Frame(body, bg="#FFFEFA", height=self.px(54))
+        actions.pack(fill="x", side="bottom")
+        self.install_button = tk.Button(
+            actions,
+            text="INSTALAR",
+            command=self.install,
+            bg="#6F7C4B",
+            fg="white",
+            activebackground="#82915A",
+            activeforeground="white",
+            disabledforeground="#DDE2D6",
+            relief="flat",
+            borderwidth=0,
+            font=("Segoe UI", 10, "bold"),
+            padx=self.px(26),
+            pady=self.px(11),
+            cursor="hand2",
+        )
         self.install_button.pack(side="right")
-        ttk.Button(body, text="Cancelar", command=self.destroy).pack(side="right", padx=8)
+        self.cancel_button = tk.Button(
+            actions,
+            text="Cancelar",
+            command=self.destroy,
+            bg="#ECEBE3",
+            fg="#2E332D",
+            activebackground="#E2E2D8",
+            activeforeground="#2E332D",
+            disabledforeground="#9A9D95",
+            relief="flat",
+            borderwidth=0,
+            font=("Segoe UI", 10, "bold"),
+            padx=self.px(24),
+            pady=self.px(11),
+            cursor="hand2",
+        )
+        self.cancel_button.pack(side="right", padx=(0, self.px(12)))
+
+        self.update_idletasks()
+        required_width = max(self.px(660), self.winfo_reqwidth())
+        required_height = max(self.px(440), self.winfo_reqheight())
+        self.geometry(f"{required_width}x{required_height}")
+        self._center(required_width, required_height)
+
+    def px(self, value):
+        return max(1, int(round(value * self.dpi_scale)))
+
+    def _center(self, width, height):
+        x = max(0, (self.winfo_screenwidth() - width) // 2)
+        y = max(0, (self.winfo_screenheight() - height) // 2)
+        self.geometry(f"{width}x{height}+{x}+{y}")
 
     def update_progress(self, value, text):
         self.bar["value"] = value
@@ -266,16 +347,19 @@ class InstallerWindow(tk.Tk):
 
     def install(self):
         self.install_button.config(state="disabled")
+        self.cancel_button.config(state="disabled")
         try:
             destination = perform_install(self.update_progress, launch=True)
             messagebox.showinfo("Vendas PRO", f"Aplicativo instalado com sucesso em:\n{destination}")
             self.destroy()
         except Exception as exc:
             self.install_button.config(state="normal")
+            self.cancel_button.config(state="normal")
             messagebox.showerror("Falha na instalação", str(exc))
 
 
 def main():
+    enable_per_monitor_dpi()
     parser = argparse.ArgumentParser(add_help=False, prefix_chars="-/")
     parser.add_argument("/UNINSTALL", action="store_true")
     parser.add_argument("/ROLLBACK", action="store_true")

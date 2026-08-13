@@ -5,6 +5,7 @@ import ctypes
 import os
 import threading
 import tkinter as tk
+import webbrowser
 from datetime import date, datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -14,6 +15,7 @@ from PIL import Image, ImageDraw, ImageTk
 from . import __version__
 from .database import Database
 from .reports import money, product_pdf, revenue_pdf
+from .theme import THEMES, ThemePreferences, get_theme, preferred_font
 from .updater import (
     UpdateError,
     check_for_update,
@@ -25,18 +27,42 @@ from .updater import (
 )
 
 
-NAVY = "#10243E"
-NAVY_LIGHT = "#193653"
-BLUE = "#1769AA"
-BLUE_HOVER = "#2080C8"
-CYAN = "#26A7D8"
-GREEN = "#169B62"
-RED = "#C84646"
-BG = "#EDF2F7"
-PANEL = "#FFFFFF"
-TEXT = "#1D2A38"
-MUTED = "#68798A"
-BORDER = "#D7E0E9"
+FONT_FAMILY = "Segoe UI"
+
+
+def _apply_palette(theme_key: str):
+    palette = get_theme(theme_key)
+    globals().update(
+        NAVY=palette["navy"],
+        NAVY_LIGHT=palette["navy_light"],
+        BLUE=palette["accent"],
+        BLUE_HOVER=palette["accent_hover"],
+        BLUE_PRESSED=palette["accent_pressed"],
+        CYAN=palette["cyan"],
+        GREEN=palette["success"],
+        GREEN_HOVER=palette["success_hover"],
+        RED=palette["danger"],
+        DANGER_BG=palette["danger_bg"],
+        DANGER_HOVER=palette["danger_hover"],
+        BG=palette["background"],
+        PANEL=palette["panel"],
+        TEXT=palette["text"],
+        MUTED=palette["muted"],
+        BORDER=palette["border"],
+        FIELD=palette["field"],
+        SOFT=palette["soft"],
+        SOFT_HOVER=palette["soft_hover"],
+        HEADING=palette["heading"],
+        SELECTED=palette["selected"],
+        NAV_TEXT=palette["nav_text"],
+        NAV_MUTED=palette["nav_muted"],
+        HERO_TEXT=palette["hero_text"],
+        PURPLE=palette["purple"],
+        SHADOW=palette["shadow"],
+    )
+
+
+_apply_palette("light")
 
 
 def _enable_per_monitor_dpi():
@@ -77,16 +103,16 @@ class UpdateOfferDialog(tk.Toplevel):
         header.pack(fill="x")
         header.pack_propagate(False)
         tk.Label(header, text="NOVA ATUALIZAÇÃO", bg=NAVY, fg="white", font=("Segoe UI", 18, "bold")).pack(anchor="w", padx=26, pady=(18, 2))
-        tk.Label(header, text=info.title, bg=NAVY, fg="#9CC8E8", font=("Segoe UI", 9)).pack(anchor="w", padx=27)
+        tk.Label(header, text=info.title, bg=NAVY, fg=NAV_MUTED, font=(FONT_FAMILY, 9)).pack(anchor="w", padx=27)
 
         body = tk.Frame(self, bg=PANEL, padx=26, pady=22)
         body.pack(fill="both", expand=True, padx=18, pady=18)
-        versions = tk.Frame(body, bg="#F1F6FA", padx=16, pady=12)
+        versions = tk.Frame(body, bg=SOFT, padx=16, pady=12)
         versions.pack(fill="x")
-        tk.Label(versions, text=f"Versão instalada: {__version__}", bg="#F1F6FA", fg=MUTED, font=("Segoe UI Semibold", 10)).pack(side="left")
-        tk.Label(versions, text=f"Nova versão: {info.version}", bg="#F1F6FA", fg=GREEN, font=("Segoe UI", 11, "bold")).pack(side="right")
-        tk.Label(body, text="Descrição da atualização", bg=PANEL, fg=NAVY, font=("Segoe UI Semibold", 10)).pack(anchor="w", pady=(16, 6))
-        notes = tk.Text(body, height=9, wrap="word", bg="#F8FAFC", fg=TEXT, relief="flat", padx=12, pady=10, font=("Segoe UI", 9))
+        tk.Label(versions, text=f"Versão instalada: {__version__}", bg=SOFT, fg=MUTED, font=(FONT_FAMILY, 10, "bold")).pack(side="left")
+        tk.Label(versions, text=f"Nova versão: {info.version}", bg=SOFT, fg=GREEN, font=(FONT_FAMILY, 11, "bold")).pack(side="right")
+        tk.Label(body, text="Descrição da atualização", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 10, "bold")).pack(anchor="w", pady=(16, 6))
+        notes = tk.Text(body, height=9, wrap="word", bg=FIELD, fg=TEXT, insertbackground=TEXT, relief="flat", padx=12, pady=10, font=(FONT_FAMILY, 9))
         notes.pack(fill="both", expand=True)
         notes.insert("1.0", info.notes)
         notes.config(state="disabled")
@@ -112,7 +138,7 @@ class DownloadDialog(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
         self.protocol("WM_DELETE_WINDOW", lambda: None)
-        tk.Label(self, text="Baixando o instalador oficial", bg=PANEL, fg=NAVY, font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=26, pady=(25, 4))
+        tk.Label(self, text="Baixando o instalador oficial", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 14, "bold")).pack(anchor="w", padx=26, pady=(25, 4))
         self.status = tk.Label(self, text="Preparando download e validação...", bg=PANEL, fg=MUTED, font=("Segoe UI", 9))
         self.status.pack(anchor="w", padx=27)
         self.bar = ttk.Progressbar(self, maximum=100, mode="determinate")
@@ -128,6 +154,54 @@ class DownloadDialog(tk.Toplevel):
             self.status.config(text=f"Baixados {downloaded / (1024 * 1024):.1f} MB")
 
 
+class ProductEditDialog(tk.Toplevel):
+    def __init__(self, parent, name, price):
+        super().__init__(parent)
+        self.result = None
+        self.title("Editar produto")
+        self.configure(bg=BG)
+        self.geometry(f"{parent.px(520)}x{parent.px(340)}")
+        self.minsize(parent.px(480), parent.px(320))
+        self.transient(parent)
+        self.grab_set()
+
+        body = tk.Frame(self, bg=PANEL, padx=parent.px(28), pady=parent.px(26), highlightthickness=1, highlightbackground=BORDER)
+        body.pack(fill="both", expand=True, padx=parent.px(18), pady=parent.px(18))
+        tk.Label(body, text="Editar produto", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 16, "bold")).pack(anchor="w")
+        tk.Label(body, text="Altere o nome e o preço no mesmo formulário.", bg=PANEL, fg=MUTED, font=(FONT_FAMILY, 9)).pack(anchor="w", pady=(parent.px(4), parent.px(18)))
+
+        self.name = tk.StringVar(value=name)
+        self.price = tk.StringVar(value=price)
+        tk.Label(body, text="Nome do produto", bg=PANEL, fg=MUTED, font=(FONT_FAMILY, 9, "bold")).pack(anchor="w")
+        name_entry = ttk.Entry(body, textvariable=self.name)
+        name_entry.pack(fill="x", pady=(parent.px(5), parent.px(14)))
+        tk.Label(body, text="Preço de venda (R$)", bg=PANEL, fg=MUTED, font=(FONT_FAMILY, 9, "bold")).pack(anchor="w")
+        price_entry = ttk.Entry(body, textvariable=self.price)
+        price_entry.pack(fill="x", pady=(parent.px(5), parent.px(20)))
+
+        actions = tk.Frame(body, bg=PANEL)
+        actions.pack(fill="x")
+        ttk.Button(actions, text="Cancelar", command=self.destroy).pack(side="right")
+        ttk.Button(actions, text="Salvar alterações", style="Accent.TButton", command=self._save).pack(side="right", padx=(0, parent.px(10)))
+        self.bind("<Return>", lambda _event: self._save())
+        self.bind("<Escape>", lambda _event: self.destroy())
+        name_entry.focus_set()
+        name_entry.selection_range(0, "end")
+
+    def _save(self):
+        try:
+            name = self.name.get().strip()
+            if not name:
+                raise ValueError("Informe o nome do produto.")
+            price_cents = parse_money(self.price.get())
+            if price_cents < 0:
+                raise ValueError("O preço não pode ser negativo.")
+            self.result = (name, price_cents)
+            self.destroy()
+        except Exception as exc:
+            messagebox.showerror("Editar produto", str(exc), parent=self)
+
+
 class App(tk.Tk):
     def __init__(self, db_path=None, maximize=True, dpi_scale_override=None):
         _enable_per_monitor_dpi()
@@ -135,11 +209,16 @@ class App(tk.Tk):
         detected_dpi = float(dpi_scale_override * 96 if dpi_scale_override else self.winfo_fpixels("1i"))
         self.dpi_scale = max(1.0, min(3.0, detected_dpi / 96.0))
         self.tk.call("tk", "scaling", detected_dpi / 72.0)
+        global FONT_FAMILY
+        FONT_FAMILY = preferred_font(self)
         self.title("Vendas PRO - Controle de Vendas")
-        self.configure(bg=BG)
         self.geometry(f"{self.px(1600)}x{self.px(900)}")
         self.minsize(self.px(1080), self.px(680))
         base = Path(os.getenv("LOCALAPPDATA", Path.home())) / "ControleDeVendas"
+        self.theme_preferences = ThemePreferences(base / "configuracoes.json")
+        self.theme_key = self.theme_preferences.load()
+        _apply_palette(self.theme_key)
+        self.configure(bg=BG)
         self.db = Database(db_path or base / "controle_vendas.db")
         self.current_items = []
         self.editing_sale_id = None
@@ -149,6 +228,7 @@ class App(tk.Tk):
         self.pages = {}
         self.nav_buttons = {}
         self.icons = {}
+        self.current_page = "home"
         self._style()
         self._create_icons()
         self._build_shell()
@@ -178,26 +258,28 @@ class App(tk.Tk):
     def _style(self):
         style = ttk.Style(self)
         style.theme_use("clam")
-        style.configure("TButton", font=("Segoe UI", 10), padding=(self.px(14), self.px(9)), background="#E5ECF3", foreground=TEXT, borderwidth=0)
-        style.map("TButton", background=[("active", "#D8E3ED")])
-        style.configure("Accent.TButton", background=BLUE, foreground="white", font=("Segoe UI", 10, "bold"), padding=(self.px(18), self.px(10)))
-        style.map("Accent.TButton", background=[("active", BLUE_HOVER), ("pressed", "#12598F")])
-        style.configure("Success.TButton", background=GREEN, foreground="white", font=("Segoe UI", 10, "bold"), padding=(self.px(18), self.px(10)))
-        style.map("Success.TButton", background=[("active", "#117D4F")])
-        style.configure("Danger.TButton", background="#FBE8E8", foreground=RED, padding=(self.px(14), self.px(9)))
-        style.map("Danger.TButton", background=[("active", "#F5D4D4")])
-        style.configure("TEntry", padding=self.px(9), fieldbackground="white", bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER)
-        style.configure("TCombobox", padding=self.px(8), fieldbackground="white", bordercolor=BORDER, arrowcolor=BLUE)
-        style.configure("TSpinbox", padding=self.px(8), fieldbackground="white", bordercolor=BORDER, arrowcolor=BLUE)
-        style.configure("Treeview", font=("Segoe UI", 10), rowheight=self.px(38), background="white", fieldbackground="white", foreground=TEXT, bordercolor=BORDER, borderwidth=0)
-        style.map("Treeview", background=[("selected", "#D9ECFB")], foreground=[("selected", TEXT)])
-        style.configure("Treeview.Heading", font=("Segoe UI Semibold", 10), background="#E8EFF6", foreground=NAVY, padding=(self.px(10), self.px(10)), borderwidth=0)
-        style.map("Treeview.Heading", background=[("active", "#DDE8F2")])
+        style.configure("TButton", font=(FONT_FAMILY, 10), padding=(self.px(16), self.px(10)), background=SOFT, foreground=TEXT, bordercolor=BORDER, borderwidth=0, focusthickness=0)
+        style.map("TButton", background=[("active", SOFT_HOVER), ("pressed", BORDER)], foreground=[("disabled", MUTED)])
+        style.configure("Accent.TButton", background=BLUE, foreground="white", font=(FONT_FAMILY, 10, "bold"), padding=(self.px(20), self.px(11)), borderwidth=0)
+        style.map("Accent.TButton", background=[("active", BLUE_HOVER), ("pressed", BLUE_PRESSED)], foreground=[("disabled", NAV_MUTED)])
+        style.configure("Success.TButton", background=GREEN, foreground="white", font=(FONT_FAMILY, 10, "bold"), padding=(self.px(20), self.px(11)), borderwidth=0)
+        style.map("Success.TButton", background=[("active", GREEN_HOVER)])
+        style.configure("Danger.TButton", background=DANGER_BG, foreground=RED, font=(FONT_FAMILY, 10, "bold"), padding=(self.px(16), self.px(10)), borderwidth=0)
+        style.map("Danger.TButton", background=[("active", DANGER_HOVER)])
+        style.configure("TEntry", padding=self.px(10), fieldbackground=FIELD, foreground=TEXT, insertcolor=TEXT, bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER)
+        style.configure("TCombobox", padding=self.px(9), fieldbackground=FIELD, foreground=TEXT, bordercolor=BORDER, arrowcolor=BLUE)
+        style.map("TCombobox", fieldbackground=[("readonly", FIELD)], foreground=[("readonly", TEXT)])
+        style.configure("TSpinbox", padding=self.px(9), fieldbackground=FIELD, foreground=TEXT, arrowcolor=BLUE, bordercolor=BORDER)
+        style.configure("Treeview", font=(FONT_FAMILY, 10), rowheight=self.px(42), background=PANEL, fieldbackground=PANEL, foreground=TEXT, bordercolor=BORDER, borderwidth=0)
+        style.map("Treeview", background=[("selected", SELECTED)], foreground=[("selected", TEXT)])
+        style.configure("Treeview.Heading", font=(FONT_FAMILY, 10, "bold"), background=HEADING, foreground=TEXT, padding=(self.px(12), self.px(12)), borderwidth=0)
+        style.map("Treeview.Heading", background=[("active", SOFT_HOVER)])
         style.configure("Inner.TNotebook", background=PANEL, borderwidth=0, tabmargins=(0, 0, 0, self.px(8)))
-        style.configure("Inner.TNotebook.Tab", font=("Segoe UI Semibold", 10), padding=(self.px(22), self.px(12)), background="#E8EFF6", foreground=MUTED, borderwidth=0)
+        style.configure("Inner.TNotebook.Tab", font=(FONT_FAMILY, 10, "bold"), padding=(self.px(24), self.px(13)), background=HEADING, foreground=MUTED, borderwidth=0)
         style.map("Inner.TNotebook.Tab", background=[("selected", BLUE)], foreground=[("selected", "white")])
         style.configure("Panel.TLabelframe", background=PANEL, bordercolor=BORDER, borderwidth=1, relief="solid")
-        style.configure("Panel.TLabelframe.Label", background=PANEL, foreground=NAVY, font=("Segoe UI Semibold", 10))
+        style.configure("Panel.TLabelframe.Label", background=PANEL, foreground=TEXT, font=(FONT_FAMILY, 10, "bold"))
+        style.configure("Horizontal.TProgressbar", background=BLUE, troughcolor=SOFT, bordercolor=SOFT, lightcolor=BLUE, darkcolor=BLUE)
 
     def _icon_image(self, kind, size, color):
         display_size = self.px(size)
@@ -267,7 +349,7 @@ class App(tk.Tk):
         brand.pack(fill="x")
         brand.pack_propagate(False)
         tk.Label(brand, text="VENDAS", bg=NAVY, fg="white", font=("Segoe UI", 22, "bold")).pack(anchor="w", padx=24, pady=(23, 0))
-        tk.Label(brand, text="PRO  •  GESTÃO LOCAL", bg=NAVY, fg="#85BCE3", font=("Segoe UI Semibold", 8)).pack(anchor="w", padx=26)
+        tk.Label(brand, text="PRO  •  GESTÃO LOCAL", bg=NAVY, fg=NAV_MUTED, font=(FONT_FAMILY, 8, "bold")).pack(anchor="w", padx=26)
         tk.Frame(sidebar, bg=NAVY_LIGHT, height=1).pack(fill="x", padx=18, pady=(0, 17))
 
         nav_items = [
@@ -288,7 +370,7 @@ class App(tk.Tk):
                 padx=self.px(23),
                 pady=self.px(11),
                 bg=NAVY,
-                fg="#DCE8F3",
+                fg=NAV_TEXT,
                 activebackground=NAVY_LIGHT,
                 activeforeground="white",
                 relief="flat",
@@ -338,7 +420,7 @@ class App(tk.Tk):
             cursor="hand2",
             command=self.backup,
         ).pack(fill="x", padx=self.px(10), pady=(self.px(3), self.px(10)))
-        tk.Label(sidebar, text=f"BANCO LOCAL • VERSÃO {__version__}", bg=NAVY, fg="#6F8DA7", font=("Segoe UI", 8)).pack(pady=(0, self.px(12)))
+        tk.Label(sidebar, text=f"BANCO LOCAL • VERSÃO {__version__}", bg=NAVY, fg=NAV_MUTED, font=(FONT_FAMILY, 8)).pack(pady=(0, self.px(12)))
 
         main = tk.Frame(self, bg=BG)
         main.pack(side="left", fill="both", expand=True)
@@ -347,14 +429,14 @@ class App(tk.Tk):
         header.pack_propagate(False)
         title_box = tk.Frame(header, bg=PANEL)
         title_box.pack(side="left", fill="y", padx=30)
-        self.header_title = tk.Label(title_box, text="Início", bg=PANEL, fg=NAVY, font=("Segoe UI", 19, "bold"))
+        self.header_title = tk.Label(title_box, text="Início", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 19, "bold"))
         self.header_title.pack(anchor="w", pady=(14, 0))
         self.header_subtitle = tk.Label(title_box, text="Visão geral da operação", bg=PANEL, fg=MUTED, font=("Segoe UI", 9))
         self.header_subtitle.pack(anchor="w")
         today_box = tk.Frame(header, bg=PANEL)
         today_box.pack(side="right", fill="y", padx=30)
         tk.Label(today_box, text="HOJE", bg=PANEL, fg=MUTED, font=("Segoe UI Semibold", 8)).pack(anchor="e", pady=(18, 1))
-        tk.Label(today_box, text=datetime.now().strftime("%d/%m/%Y"), bg=PANEL, fg=NAVY, font=("Segoe UI Semibold", 11)).pack(anchor="e")
+        tk.Label(today_box, text=datetime.now().strftime("%d/%m/%Y"), bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 11, "bold")).pack(anchor="e")
 
         self.content = tk.Frame(main, bg=BG)
         self.content.pack(fill="both", expand=True, padx=self.px(26), pady=self.px(22))
@@ -382,7 +464,7 @@ class App(tk.Tk):
         hero.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 16))
         hero.grid_propagate(False)
         tk.Label(hero, text="Bem-vindo ao seu controle de vendas", bg=BLUE, fg="white", font=("Segoe UI", 21, "bold")).pack(anchor="w", padx=28, pady=(24, 3))
-        tk.Label(hero, text="Cadastre, bipe e acompanhe o faturamento da empresa em um só lugar.", bg=BLUE, fg="#D9EEFC", font=("Segoe UI", 10)).pack(anchor="w", padx=30)
+        tk.Label(hero, text="Cadastre, bipe e acompanhe o faturamento da empresa em um só lugar.", bg=BLUE, fg=HERO_TEXT, font=(FONT_FAMILY, 10)).pack(anchor="w", padx=30)
 
         cards = [
             ("sales", "Nova venda", "Inicie uma venda por bipagem", "sales"),
@@ -395,7 +477,7 @@ class App(tk.Tk):
             tk.Label(card, image=self.icons[f"card_{key}"], bg=PANEL).pack(side="left", padx=(22, 16), pady=19)
             text_box = tk.Frame(card, bg=PANEL)
             text_box.pack(side="left", fill="both", expand=True, pady=18)
-            tk.Label(text_box, text=title, bg=PANEL, fg=NAVY, font=("Segoe UI Semibold", 12)).pack(anchor="w")
+            tk.Label(text_box, text=title, bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 12, "bold")).pack(anchor="w")
             tk.Label(text_box, text=description, bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", pady=(3, 0))
             arrow = tk.Label(card, text="›", bg=PANEL, fg=BLUE, font=("Segoe UI", 24))
             arrow.pack(side="right", padx=20)
@@ -411,7 +493,7 @@ class App(tk.Tk):
             ("revenue", "FATURAMENTO DO MÊS", GREEN),
             ("sales", "VENDAS NO MÊS", BLUE),
             ("products", "PRODUTOS ATIVOS", CYAN),
-            ("clients", "CLIENTES", "#7A62C7"),
+            ("clients", "CLIENTES", PURPLE),
         ]
         for column, (key, label, accent) in enumerate(stat_specs):
             card = tk.Frame(stats, bg=PANEL, highlightthickness=1, highlightbackground=BORDER)
@@ -420,7 +502,7 @@ class App(tk.Tk):
             box = tk.Frame(card, bg=PANEL)
             box.pack(fill="both", expand=True, padx=17, pady=15)
             tk.Label(box, text=label, bg=PANEL, fg=MUTED, font=("Segoe UI Semibold", 8)).pack(anchor="w")
-            value = tk.Label(box, text="0", bg=PANEL, fg=NAVY, font=("Segoe UI", 18, "bold"))
+            value = tk.Label(box, text="0", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 18, "bold"))
             value.pack(anchor="w", pady=(3, 0))
             self.stat_labels[key] = value
 
@@ -429,20 +511,20 @@ class App(tk.Tk):
         recent.grid_columnconfigure(0, weight=1)
         recent_header = tk.Frame(recent, bg=PANEL)
         recent_header.grid(row=0, column=0, sticky="ew", padx=20, pady=(16, 8))
-        tk.Label(recent_header, text="Vendas recentes", bg=PANEL, fg=NAVY, font=("Segoe UI Semibold", 12)).pack(side="left")
+        tk.Label(recent_header, text="Vendas recentes", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 12, "bold")).pack(side="left")
         tk.Button(recent_header, text="Ver histórico  ›", bg=PANEL, fg=BLUE, activebackground=PANEL, activeforeground=BLUE_HOVER, relief="flat", borderwidth=0, font=("Segoe UI Semibold", 9), cursor="hand2", command=lambda: self.show_page("sales", history=True)).pack(side="right")
         self.recent_tree = ttk.Treeview(recent, columns=("id", "date", "client", "items", "total"), show="headings", height=6)
         for column, title, width, anchor in [
             ("id", "VENDA", self.px(90), "w"), ("date", "DATA", self.px(130), "w"), ("client", "CLIENTE", self.px(520), "w"), ("items", "ITENS", self.px(100), "center"), ("total", "VALOR", self.px(170), "e")
         ]:
-            self.recent_tree.heading(column, text=title)
-            self.recent_tree.column(column, width=width, anchor=anchor)
+            self.recent_tree.heading(column, text=title, anchor="center")
+            self.recent_tree.column(column, width=width, anchor="center")
         self.recent_tree.grid(row=1, column=0, sticky="nsew", padx=20, pady=(0, 18))
 
     def _module_title(self, parent, title, description):
         header = tk.Frame(parent, bg=BG)
         header.pack(fill="x", pady=(0, 14))
-        tk.Label(header, text=title, bg=BG, fg=NAVY, font=("Segoe UI", 17, "bold")).pack(anchor="w")
+        tk.Label(header, text=title, bg=BG, fg=TEXT, font=(FONT_FAMILY, 17, "bold")).pack(anchor="w")
         tk.Label(header, text=description, bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", pady=(2, 0))
 
     def _build_sales(self):
@@ -489,8 +571,8 @@ class App(tk.Tk):
         for column, title, width, anchor in [
             ("product", "PRODUTO", self.px(620), "w"), ("qty", "QUANTIDADE", self.px(140), "center"), ("unit", "VALOR UNITÁRIO", self.px(180), "e"), ("subtotal", "SUBTOTAL", self.px(190), "e")
         ]:
-            self.items.heading(column, text=title)
-            self.items.column(column, width=width, anchor=anchor)
+            self.items.heading(column, text=title, anchor="center")
+            self.items.column(column, width=width, anchor="center")
         self.items.pack(fill="both", expand=True)
 
         actions = tk.Frame(new, bg=PANEL)
@@ -498,19 +580,19 @@ class App(tk.Tk):
         ttk.Button(actions, text="Remover item", style="Danger.TButton", command=self.remove_item).pack(side="left")
         ttk.Button(actions, text="Limpar venda", command=self.clear_sale).pack(side="left", padx=8)
         ttk.Button(actions, text="FINALIZAR VENDA", style="Success.TButton", command=self.finish_sale).pack(side="right")
-        self.sale_total = tk.Label(actions, text="TOTAL: R$ 0,00", bg=PANEL, fg=NAVY, font=("Segoe UI", 18, "bold"))
+        self.sale_total = tk.Label(actions, text="TOTAL: R$ 0,00", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 18, "bold"))
         self.sale_total.pack(side="right", padx=24)
 
         history_header = tk.Frame(history, bg=PANEL)
         history_header.pack(fill="x", pady=(0, 12))
-        tk.Label(history_header, text="Vendas registradas", bg=PANEL, fg=NAVY, font=("Segoe UI Semibold", 13)).pack(side="left")
+        tk.Label(history_header, text="Vendas registradas", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 13, "bold")).pack(side="left")
         ttk.Button(history_header, text="Atualizar lista", command=self.refresh_sales).pack(side="right")
         self.sales_tree = ttk.Treeview(history, columns=("id", "date", "client", "items", "total"), show="headings", height=6)
         for column, title, width, anchor in [
             ("id", "VENDA", self.px(100), "w"), ("date", "DATA", self.px(140), "w"), ("client", "CLIENTE", self.px(600), "w"), ("items", "ITENS", self.px(120), "center"), ("total", "VALOR", self.px(190), "e")
         ]:
-            self.sales_tree.heading(column, text=title)
-            self.sales_tree.column(column, width=width, anchor=anchor)
+            self.sales_tree.heading(column, text=title, anchor="center")
+            self.sales_tree.column(column, width=width, anchor="center")
         self.sales_tree.pack(fill="both", expand=True)
         history_actions = tk.Frame(history, bg=PANEL)
         history_actions.pack(fill="x", pady=(14, 0))
@@ -549,13 +631,15 @@ class App(tk.Tk):
         for column, title, width, anchor in [
             ("id", "ID", self.px(80), "w"), ("name", "PRODUTO", self.px(650), "w"), ("price", "PREÇO", self.px(180), "e"), ("barcode", "CÓDIGO DE BARRAS", self.px(260), "w")
         ]:
-            self.products.heading(column, text=title)
-            self.products.column(column, width=width, anchor=anchor)
+            self.products.heading(column, text=title, anchor="center")
+            self.products.column(column, width=width, anchor="center")
         self.products.pack(fill="both", expand=True, padx=22, pady=(0, 10))
+        self.products.bind("<Double-1>", lambda _event: self.edit_product())
         actions = tk.Frame(panel, bg=PANEL)
         actions.pack(fill="x", padx=22, pady=(0, 20))
         ttk.Button(actions, text="Editar produto", style="Accent.TButton", command=self.edit_product).pack(side="left")
-        ttk.Button(actions, text="Excluir produto", style="Danger.TButton", command=self.delete_product).pack(side="left", padx=8)
+        ttk.Button(actions, text="Copiar código", command=self.copy_product_barcode).pack(side="left", padx=8)
+        ttk.Button(actions, text="Excluir produto", style="Danger.TButton", command=self.delete_product).pack(side="left")
 
     def _build_clients(self):
         page = self._new_page("clients")
@@ -593,8 +677,8 @@ class App(tk.Tk):
             ("notes", "OBSERVAÇÃO", self.px(560), "w"),
             ("created", "CADASTRADO EM", self.px(190), "w"),
         ]:
-            self.clients_tree.heading(column, text=title)
-            self.clients_tree.column(column, width=width, anchor=anchor)
+            self.clients_tree.heading(column, text=title, anchor="center")
+            self.clients_tree.column(column, width=width, anchor="center")
         self.clients_tree.pack(fill="both", expand=True, padx=self.px(22), pady=(0, self.px(10)))
         self.clients_tree.bind("<Double-1>", lambda _event: self.begin_client_edit())
 
@@ -610,14 +694,14 @@ class App(tk.Tk):
         panel = self._panel(page)
         panel.pack(fill="both", expand=True)
 
-        filter_box = tk.Frame(panel, bg="#F7FAFC", highlightthickness=1, highlightbackground=BORDER)
+        filter_box = tk.Frame(panel, bg=SOFT, highlightthickness=1, highlightbackground=BORDER)
         filter_box.pack(fill="x", padx=22, pady=20)
         filter_box.grid_columnconfigure(2, weight=1)
         self.start = tk.StringVar(value=date.today().replace(day=1).isoformat())
         self.end = tk.StringVar(value=date.today().isoformat())
-        self._field_label(filter_box, "Data inicial", 0, 0, bg="#F7FAFC")
-        self._field_label(filter_box, "Data final", 0, 1, padx=(12, 0), bg="#F7FAFC")
-        self._field_label(filter_box, "Cliente", 0, 2, padx=(12, 0), bg="#F7FAFC")
+        self._field_label(filter_box, "Data inicial", 0, 0, bg=SOFT)
+        self._field_label(filter_box, "Data final", 0, 1, padx=(12, 0), bg=SOFT)
+        self._field_label(filter_box, "Cliente", 0, 2, padx=(12, 0), bg=SOFT)
         ttk.Entry(filter_box, textvariable=self.start, width=18).grid(row=1, column=0, sticky="w", pady=(0, 15), padx=(15, 0))
         ttk.Entry(filter_box, textvariable=self.end, width=18).grid(row=1, column=1, sticky="w", padx=(12, 0), pady=(0, 15))
         self.report_client = ttk.Combobox(filter_box, state="readonly", width=45)
@@ -625,10 +709,10 @@ class App(tk.Tk):
         ttk.Button(filter_box, text="CONSULTAR", style="Accent.TButton", command=self.run_report).grid(row=1, column=3, padx=(0, 15), pady=(0, 15))
 
         self.report_tree = ttk.Treeview(panel, columns=("client", "total"), show="headings", height=6)
-        self.report_tree.heading("client", text="CLIENTE")
-        self.report_tree.heading("total", text="VALOR COMPRADO")
-        self.report_tree.column("client", width=self.px(850))
-        self.report_tree.column("total", width=self.px(260), anchor="e")
+        self.report_tree.heading("client", text="CLIENTE", anchor="center")
+        self.report_tree.heading("total", text="VALOR COMPRADO", anchor="center")
+        self.report_tree.column("client", width=self.px(850), anchor="center")
+        self.report_tree.column("total", width=self.px(260), anchor="center")
         self.report_tree.pack(fill="both", expand=True, padx=22)
         footer = tk.Frame(panel, bg=PANEL)
         footer.pack(fill="x", padx=22, pady=20)
@@ -638,13 +722,32 @@ class App(tk.Tk):
 
     def _build_settings(self):
         page = self._new_page("settings")
-        self._module_title(page, "Configurações", "Atualizações, segurança e recuperação do aplicativo.")
+        self._module_title(page, "Configurações", "Aparência, atualizações, segurança e recuperação do aplicativo.")
+
+        appearance = self._panel(page)
+        appearance.pack(fill="x", pady=(0, self.px(16)))
+        appearance_content = tk.Frame(appearance, bg=PANEL, padx=self.px(26), pady=self.px(24))
+        appearance_content.pack(fill="x")
+        tk.Label(appearance_content, text="APARÊNCIA", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 13, "bold")).pack(anchor="w")
+        tk.Label(
+            appearance_content,
+            text="Escolha o visual que combina melhor com o ambiente de trabalho. A preferência fica salva neste computador.",
+            bg=PANEL,
+            fg=MUTED,
+            font=(FONT_FAMILY, 9),
+        ).pack(anchor="w", pady=(self.px(5), self.px(16)))
+        theme_options = tk.Frame(appearance_content, bg=PANEL)
+        theme_options.pack(fill="x")
+        theme_options.grid_columnconfigure((0, 1), weight=1, uniform="themes")
+        self._theme_option(theme_options, "dark", 0)
+        self._theme_option(theme_options, "light", 1)
+
         panel = self._panel(page)
         panel.pack(fill="x")
 
         content = tk.Frame(panel, bg=PANEL, padx=self.px(26), pady=self.px(24))
         content.pack(fill="x")
-        tk.Label(content, text="ATUALIZAÇÕES DO APLICATIVO", bg=PANEL, fg=NAVY, font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        tk.Label(content, text="ATUALIZAÇÕES DO APLICATIVO", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 13, "bold")).pack(anchor="w")
         tk.Label(
             content,
             text=f"Versão instalada: {__version__}",
@@ -668,7 +771,7 @@ class App(tk.Tk):
             justify="left",
             font=("Segoe UI", 9),
         ).pack(anchor="w", pady=(10, 14))
-        self.settings_update_status = tk.Label(content, text="Pronto para verificar.", bg="#F1F6FA", fg=BLUE, padx=12, pady=9, font=("Segoe UI Semibold", 9))
+        self.settings_update_status = tk.Label(content, text="Pronto para verificar.", bg=SOFT, fg=BLUE, padx=12, pady=9, font=(FONT_FAMILY, 9, "bold"))
         self.settings_update_status.pack(fill="x", pady=(0, 14))
 
         actions = tk.Frame(content, bg=PANEL)
@@ -681,7 +784,7 @@ class App(tk.Tk):
 
         recovery = self._panel(page)
         recovery.pack(fill="x", pady=(16, 0))
-        tk.Label(recovery, text="PROTEÇÃO DOS DADOS", bg=PANEL, fg=NAVY, font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=26, pady=(21, 6))
+        tk.Label(recovery, text="PROTEÇÃO DOS DADOS", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 12, "bold")).pack(anchor="w", padx=26, pady=(21, 6))
         tk.Label(
             recovery,
             text="Clientes, produtos e vendas ficam em uma pasta de dados separada da instalação. Antes de atualizar ou restaurar, o aplicativo também cria um backup do banco local.",
@@ -692,12 +795,92 @@ class App(tk.Tk):
             font=("Segoe UI", 9),
         ).pack(anchor="w", padx=26, pady=(0, 22))
 
+    def _theme_option(self, parent, key, column):
+        theme = THEMES[key]
+        selected = key == self.theme_key
+        shadow = tk.Frame(parent, bg=SHADOW)
+        shadow.grid(
+            row=0,
+            column=column,
+            sticky="ew",
+            padx=(0, self.px(10)) if column == 0 else (self.px(10), 0),
+        )
+        card = tk.Button(
+            shadow,
+            text=f"{'●  ' if selected else '○  '}{theme['name']}\n{theme['description']}",
+            justify="left",
+            anchor="w",
+            bg=SELECTED if selected else SOFT,
+            fg=TEXT,
+            activebackground=SOFT_HOVER,
+            activeforeground=TEXT,
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=1,
+            highlightbackground=BLUE if selected else BORDER,
+            font=(FONT_FAMILY, 10, "bold"),
+            padx=self.px(18),
+            pady=self.px(15),
+            cursor="hand2",
+            command=lambda value=key: self.change_theme(value),
+        )
+        card.pack(fill="both", expand=True, padx=(0, self.px(2)), pady=(0, self.px(2)))
+
+    def change_theme(self, key):
+        if key == self.theme_key or key not in THEMES:
+            return
+        if getattr(self, "update_busy", False):
+            return messagebox.showinfo("Aparência", "Aguarde a atualização em andamento terminar para trocar o tema.")
+
+        draft = {
+            "sale_date": self.sale_date.get() if hasattr(self, "sale_date") else date.today().isoformat(),
+            "sale_client": self.sale_client.get() if hasattr(self, "sale_client") else "",
+            "quantity": self.qty.get() if hasattr(self, "qty") else "1",
+            "barcode": self.barcode.get() if hasattr(self, "barcode") else "",
+            "start": self.start.get() if hasattr(self, "start") else date.today().replace(day=1).isoformat(),
+            "end": self.end.get() if hasattr(self, "end") else date.today().isoformat(),
+            "report_client": self.report_client.get() if hasattr(self, "report_client") else "Todos os clientes",
+        }
+        current_page = self.current_page
+        self.theme_preferences.save(key)
+        self.theme_key = key
+        _apply_palette(key)
+        self.configure(bg=BG)
+
+        for child in self.winfo_children():
+            child.destroy()
+        self.pages = {}
+        self.nav_buttons = {}
+        self.icons = {}
+        self._style()
+        self._create_icons()
+        self._build_shell()
+        self._build_home()
+        self._build_sales()
+        self._build_products()
+        self._build_clients()
+        self._build_reports()
+        self._build_settings()
+        self.refresh_all()
+
+        self.sale_date.set(draft["sale_date"])
+        if draft["sale_client"] in self.client_map:
+            self.sale_client.set(draft["sale_client"])
+        self.qty.set(draft["quantity"])
+        self.barcode.set(draft["barcode"])
+        self.start.set(draft["start"])
+        self.end.set(draft["end"])
+        if draft["report_client"] in self.report_client_map:
+            self.report_client.set(draft["report_client"])
+        self.refresh_items()
+        self.show_page(current_page)
+
     def _refresh_update_settings(self):
         if hasattr(self, "rollback_button"):
             self.rollback_button.config(state="normal" if rollback_available() else "disabled")
 
-    def _field_label(self, parent, text, row, column, padx=(0, 0), bg=PANEL):
-        tk.Label(parent, text=text, bg=bg, fg=MUTED, font=("Segoe UI Semibold", 9)).grid(row=row, column=column, sticky="w", padx=padx, pady=(0, 5))
+    def _field_label(self, parent, text, row, column, padx=(0, 0), bg=None):
+        tk.Label(parent, text=text, bg=bg or PANEL, fg=MUTED, font=(FONT_FAMILY, 9, "bold")).grid(row=row, column=column, sticky="w", padx=padx, pady=(0, 5))
 
     def show_page(self, key, history=False):
         titles = {
@@ -709,11 +892,12 @@ class App(tk.Tk):
             "settings": ("Configurações", "Atualizações e recuperação"),
         }
         self.pages[key].tkraise()
+        self.current_page = key
         title, subtitle = titles[key]
         self.header_title.config(text=title)
         self.header_subtitle.config(text=subtitle)
         for page_key, button in self.nav_buttons.items():
-            button.config(bg=BLUE if page_key == key else NAVY, fg="white" if page_key == key else "#DCE8F3")
+            button.config(bg=BLUE if page_key == key else NAVY, fg="white" if page_key == key else NAV_TEXT)
         if key == "home":
             self.refresh_dashboard()
         elif key == "sales":
@@ -846,8 +1030,12 @@ class App(tk.Tk):
             self.prod_name.set("")
             self.prod_price.set("")
             self.refresh_products()
+            if self.products.exists(str(product_id)):
+                self.products.selection_set(str(product_id))
+                self.products.focus(str(product_id))
+                self.products.see(str(product_id))
             self.refresh_dashboard()
-            messagebox.showinfo("Produto cadastrado", f"Código gerado automaticamente:\n{product['barcode']}")
+            messagebox.showinfo("Produto cadastrado", f"Código gerado automaticamente:\n{product['barcode']}\n\nO produto ficou selecionado. Use “Copiar código” quando desejar.")
         except Exception as exc:
             messagebox.showerror("Produto", str(exc))
 
@@ -856,7 +1044,7 @@ class App(tk.Tk):
             self.products.delete(item)
         search = self.search.get() if hasattr(self, "search") else ""
         for product in self.db.list_products(search):
-            self.products.insert("", "end", values=(product["id"], product["name"], money(product["price_cents"]), product["barcode"]))
+            self.products.insert("", "end", iid=str(product["id"]), values=(product["id"], product["name"], money(product["price_cents"]), product["barcode"]))
 
     def _selected(self, tree):
         selected = tree.selection()
@@ -866,16 +1054,29 @@ class App(tk.Tk):
         row = self._selected(self.products)
         if not row:
             return messagebox.showwarning("Produto", "Selecione um produto.")
-        name = simpledialog.askstring("Editar produto", "Nome:", initialvalue=row[1], parent=self)
-        if name is None:
+        dialog = ProductEditDialog(self, row[1], row[2].replace("R$ ", ""))
+        self.wait_window(dialog)
+        if dialog.result is None:
             return
-        price = simpledialog.askstring("Editar produto", "Preço (R$):", initialvalue=row[2].replace("R$ ", ""), parent=self)
-        if price is not None:
-            try:
-                self.db.update_product(int(row[0]), name, parse_money(price))
-                self.refresh_products()
-            except Exception as exc:
-                messagebox.showerror("Produto", str(exc))
+        try:
+            name, price_cents = dialog.result
+            self.db.update_product(int(row[0]), name, price_cents)
+            self.refresh_products()
+            if self.products.exists(str(row[0])):
+                self.products.selection_set(str(row[0]))
+            messagebox.showinfo("Produto", "Nome e preço atualizados com sucesso.")
+        except Exception as exc:
+            messagebox.showerror("Produto", str(exc))
+
+    def copy_product_barcode(self):
+        row = self._selected(self.products)
+        if not row:
+            return messagebox.showwarning("Produto", "Selecione o produto cujo código deseja copiar.")
+        code = str(row[3])
+        self.clipboard_clear()
+        self.clipboard_append(code)
+        self.update_idletasks()
+        messagebox.showinfo("Código copiado", f"O código {code} foi copiado para a área de transferência.")
 
     def delete_product(self):
         row = self._selected(self.products)
@@ -990,14 +1191,30 @@ class App(tk.Tk):
         path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")], initialfile="lista_de_produtos.pdf")
         if path:
             product_pdf(path, self.db.list_products())
-            messagebox.showinfo("PDF", f"Relatório salvo em:\n{path}")
+            self.open_pdf_for_printing(path)
 
     def revenue_report_pdf(self):
         self.run_report()
         path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")], initialfile="faturamento_bruto.pdf")
         if path:
             revenue_pdf(path, self.report_rows, self.start.get(), self.end.get(), self.report_client.get())
-            messagebox.showinfo("PDF", f"Relatório salvo em:\n{path}")
+            self.open_pdf_for_printing(path)
+
+    def open_pdf_for_printing(self, path):
+        pdf_path = Path(path).resolve()
+        try:
+            opened = webbrowser.open(pdf_path.as_uri(), new=2)
+            if not opened and os.name == "nt":
+                os.startfile(pdf_path)  # type: ignore[attr-defined]
+            messagebox.showinfo(
+                "Relatório A4 pronto",
+                f"O PDF foi salvo e aberto para impressão:\n{pdf_path}\n\nNo navegador, pressione Ctrl+P para imprimir.",
+            )
+        except Exception as exc:
+            messagebox.showwarning(
+                "Relatório salvo",
+                f"O PDF foi salvo em:\n{pdf_path}\n\nNão foi possível abrir o navegador automaticamente: {exc}",
+            )
 
     def check_updates(self, silent=False):
         if getattr(self, "update_busy", False):

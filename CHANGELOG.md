@@ -1,5 +1,17 @@
 # Histórico de versões
 
+## 1.4.0 — 2026-08-13
+
+- dois temas persistentes: Dark grafite com azul neon e Light off-white com verde-oliva;
+- tipografia e componentes reorganizados com mais espaçamento e estados de interação;
+- correção do instalador em monitores com escala/DPI elevada;
+- botões **Instalar** e **Cancelar** com faixa própria, cores e dimensões explícitas;
+- cabeçalhos e conteúdos de todas as tabelas centralizados por coluna;
+- relatórios A4 abertos automaticamente no navegador após serem gerados;
+- edição de produto com nome e preço reunidos no mesmo formulário;
+- botão para copiar o código de barras do produto selecionado;
+- novos testes de interface para temas, DPI, alinhamento e abertura de PDF.
+
 ## 1.3.0 — 2026-08-12
 
 - atualização segura pelo GitHub Releases;

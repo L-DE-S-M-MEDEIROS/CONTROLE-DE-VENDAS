@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## 1.5.4 — 2026-08-13
+
+- campos de data de vendas e relatórios alterados para o formato brasileiro `dd/mm/aa`;
+- máscara mantém as barras visíveis mesmo quando os números são apagados;
+- novo ícone de calendário abre um seletor mensal para escolher a data com o clique;
+- datas continuam gravadas internamente no padrão ISO, preservando filtros e ordenação;
+- históricos e cadastros exibem as datas no formato brasileiro.
+
 ## 1.5.3 — 2026-08-13
 
 - rodapé da nova venda reorganizado para manter sempre visíveis os textos dos botões **Remover item**, **Limpar venda** e **Finalizar venda**;

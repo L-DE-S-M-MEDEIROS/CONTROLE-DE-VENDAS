@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 from tkinter import ttk
 from types import SimpleNamespace
@@ -8,10 +9,89 @@ from unittest.mock import patch
 
 from installer_launcher import InstallerWindow
 from sales_control.app import App, parse_money
+from sales_control.date_input import DATE_MASK, display_date, iso_date
 from sales_control.theme import ThemePreferences, get_theme
 
 
 class InterfaceTests(unittest.TestCase):
+    def test_date_mask_keeps_slashes_and_calendar_selects_the_date(self):
+        self.assertEqual("13/08/26", display_date("2026-08-13"))
+        self.assertEqual("2026-08-13", iso_date("13/08/26"))
+        with self.assertRaises(ValueError):
+            iso_date("31/02/26")
+
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "date_mask.db",
+                maximize=False,
+                dpi_scale_override=1.0,
+            )
+            app.update()
+            try:
+                entry = app.sale_date_field.entry
+                entry.selection_range(0, "end")
+                entry._on_keypress(
+                    SimpleNamespace(keysym="BackSpace", char="", state=0)
+                )
+                self.assertEqual(DATE_MASK, app.sale_date.get())
+
+                for digit in "130826":
+                    entry._on_keypress(
+                        SimpleNamespace(keysym=digit, char=digit, state=0)
+                    )
+                self.assertEqual("13/08/26", app.sale_date.get())
+
+                entry._on_keypress(
+                    SimpleNamespace(keysym="BackSpace", char="", state=0)
+                )
+                self.assertEqual("13/08/2 ", app.sale_date.get())
+                self.assertEqual("/", app.sale_date.get()[2])
+                self.assertEqual("/", app.sale_date.get()[5])
+
+                app.sale_date_field.open_calendar()
+                popup = app.sale_date_field.popup
+                self.assertTrue(popup.winfo_exists())
+                popup.select(date(2027, 9, 2))
+                self.assertEqual("02/09/27", app.sale_date.get())
+                self.assertTrue(app.sale_date_field.calendar_button.cget("image"))
+            finally:
+                app.destroy()
+
+    def test_report_filters_accept_the_visible_brazilian_date_format(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "report_dates.db",
+                maximize=False,
+                dpi_scale_override=1.0,
+            )
+            app.withdraw()
+            app.update()
+            try:
+                product = app.db.add_product("Produto", 1500)
+                client = app.db.add_client("Cliente")
+                app.db.save_sale(
+                    client,
+                    "2026-08-13",
+                    [
+                        {
+                            "product_id": product,
+                            "product_name": "Produto",
+                            "quantity": 2,
+                            "unit_price_cents": 1500,
+                        }
+                    ],
+                )
+                app.start_date_field.entry.set_date("01/08/26")
+                app.end_date_field.entry.set_date("31/08/26")
+                self.assertTrue(app.run_report())
+                self.assertEqual(3000, app.report_rows[0]["total_cents"])
+            finally:
+                app.destroy()
+
     def test_sales_footer_buttons_are_visible_and_keep_their_text(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"LOCALAPPDATA": folder}, clear=False

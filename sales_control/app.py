@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageTk
 
 from . import __version__
 from .database import Database
+from .date_input import DateField, display_date, iso_date
 from .reports import money, product_label_pdf, product_pdf, revenue_pdf
 from .theme import THEMES, ThemePreferences, get_theme, preferred_font
 from .updater import (
@@ -380,6 +381,17 @@ class App(tk.Tk):
         style.map("Success.TButton", background=[("active", GREEN_HOVER)])
         style.configure("Danger.TButton", background=DANGER_BG, foreground=RED, font=(FONT_FAMILY, 10, "bold"), padding=(self.px(16), self.px(10)), borderwidth=0)
         style.map("Danger.TButton", background=[("active", DANGER_HOVER)])
+        style.configure(
+            "Calendar.TButton",
+            background=SOFT,
+            bordercolor=BORDER,
+            borderwidth=0,
+            padding=(self.px(10), self.px(9)),
+        )
+        style.map(
+            "Calendar.TButton",
+            background=[("active", SOFT_HOVER), ("pressed", SELECTED)],
+        )
         style.configure("TEntry", padding=self.px(10), fieldbackground=FIELD, foreground=TEXT, insertcolor=TEXT, bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER)
         style.configure("TCombobox", padding=self.px(9), fieldbackground=FIELD, foreground=TEXT, bordercolor=BORDER, arrowcolor=BLUE)
         style.map("TCombobox", fieldbackground=[("readonly", FIELD)], foreground=[("readonly", TEXT)])
@@ -467,6 +479,29 @@ class App(tk.Tk):
             draw.ellipse([*point(5, 5), *point(27, 27)], outline=color, width=width)
             for start, end in [((16, 1), (16, 6)), ((16, 26), (16, 31)), ((1, 16), (6, 16)), ((26, 16), (31, 16))]:
                 draw.line([point(*start), point(*end)], fill=color, width=width)
+        elif kind == "calendar":
+            draw.rounded_rectangle(
+                [*point(4, 6), *point(28, 29)],
+                radius=max(2, int(2.5 * scale)),
+                outline=color,
+                width=width,
+            )
+            draw.line([point(4, 13), point(28, 13)], fill=color, width=width)
+            draw.line([point(10, 3), point(10, 9)], fill=color, width=width)
+            draw.line([point(22, 3), point(22, 9)], fill=color, width=width)
+            for x in (10, 16, 22):
+                for y in (18, 24):
+                    radius = max(1, int(1.2 * scale))
+                    center_x, center_y = point(x, y)
+                    draw.ellipse(
+                        [
+                            center_x - radius,
+                            center_y - radius,
+                            center_x + radius,
+                            center_y + radius,
+                        ],
+                        fill=color,
+                    )
         image = image.resize((display_size, display_size), Image.Resampling.LANCZOS)
         return ImageTk.PhotoImage(image)
 
@@ -476,6 +511,7 @@ class App(tk.Tk):
             self.icons[f"card_{kind}"] = self._icon_image(kind, 50, BLUE)
         app_icon = self._icon_image("reports", 64, BLUE)
         self.icons["app"] = app_icon
+        self.icons["calendar"] = self._icon_image("calendar", 20, BLUE)
         self.iconphoto(True, app_icon)
 
     def _build_shell(self):
@@ -686,8 +722,9 @@ class App(tk.Tk):
         self._field_label(form, "Data da venda", 0, 0)
         self._field_label(form, "Cliente / usuário", 0, 1, padx=(14, 0))
         self._field_label(form, "Quantidade antes da bipagem", 0, 3, padx=(14, 0))
-        self.sale_date = tk.StringVar(value=date.today().isoformat())
-        ttk.Entry(form, textvariable=self.sale_date, width=16).grid(row=1, column=0, sticky="w")
+        self.sale_date = tk.StringVar(value=display_date(date.today()))
+        self.sale_date_field = self._date_field(form, self.sale_date)
+        self.sale_date_field.grid(row=1, column=0, sticky="w")
         self.sale_client = ttk.Combobox(form, state="readonly", width=42)
         self.sale_client.grid(row=1, column=1, padx=(14, 6), sticky="ew")
         ttk.Button(form, text="+ Novo cliente", command=self.add_client).grid(row=1, column=2)
@@ -885,13 +922,35 @@ class App(tk.Tk):
         filter_box = tk.Frame(panel, bg=SOFT, highlightthickness=1, highlightbackground=BORDER)
         filter_box.pack(fill="x", padx=22, pady=20)
         filter_box.grid_columnconfigure(2, weight=1)
-        self.start = tk.StringVar(value=date.today().replace(day=1).isoformat())
-        self.end = tk.StringVar(value=date.today().isoformat())
+        self.start = tk.StringVar(value=display_date(date.today().replace(day=1)))
+        self.end = tk.StringVar(value=display_date(date.today()))
         self._field_label(filter_box, "Data inicial", 0, 0, bg=SOFT)
         self._field_label(filter_box, "Data final", 0, 1, padx=(12, 0), bg=SOFT)
         self._field_label(filter_box, "Cliente", 0, 2, padx=(12, 0), bg=SOFT)
-        ttk.Entry(filter_box, textvariable=self.start, width=18).grid(row=1, column=0, sticky="w", pady=(0, 15), padx=(15, 0))
-        ttk.Entry(filter_box, textvariable=self.end, width=18).grid(row=1, column=1, sticky="w", padx=(12, 0), pady=(0, 15))
+        self.start_date_field = self._date_field(
+            filter_box,
+            self.start,
+            background=SOFT,
+        )
+        self.start_date_field.grid(
+            row=1,
+            column=0,
+            sticky="w",
+            pady=(0, 15),
+            padx=(15, 0),
+        )
+        self.end_date_field = self._date_field(
+            filter_box,
+            self.end,
+            background=SOFT,
+        )
+        self.end_date_field.grid(
+            row=1,
+            column=1,
+            sticky="w",
+            padx=(12, 0),
+            pady=(0, 15),
+        )
         self.report_client = ttk.Combobox(filter_box, state="readonly", width=45)
         self.report_client.grid(row=1, column=2, sticky="ew", padx=(12, 10), pady=(0, 15))
         ttk.Button(filter_box, text="CONSULTAR", style="Accent.TButton", command=self.run_report).grid(row=1, column=3, padx=(0, 15), pady=(0, 15))
@@ -1021,12 +1080,12 @@ class App(tk.Tk):
             return messagebox.showinfo("Aparência", "Aguarde a atualização em andamento terminar para trocar o tema.")
 
         draft = {
-            "sale_date": self.sale_date.get() if hasattr(self, "sale_date") else date.today().isoformat(),
+            "sale_date": self.sale_date.get() if hasattr(self, "sale_date") else display_date(date.today()),
             "sale_client": self.sale_client.get() if hasattr(self, "sale_client") else "",
             "quantity": self.qty.get() if hasattr(self, "qty") else "1",
             "barcode": self.barcode.get() if hasattr(self, "barcode") else "",
-            "start": self.start.get() if hasattr(self, "start") else date.today().replace(day=1).isoformat(),
-            "end": self.end.get() if hasattr(self, "end") else date.today().isoformat(),
+            "start": self.start.get() if hasattr(self, "start") else display_date(date.today().replace(day=1)),
+            "end": self.end.get() if hasattr(self, "end") else display_date(date.today()),
             "report_client": self.report_client.get() if hasattr(self, "report_client") else "Todos os clientes",
         }
         current_page = self.current_page
@@ -1068,6 +1127,25 @@ class App(tk.Tk):
     def _refresh_update_settings(self):
         if hasattr(self, "rollback_button"):
             self.rollback_button.config(state="normal" if rollback_available() else "disabled")
+
+    def _date_field(self, parent, variable, background=None):
+        return DateField(
+            parent,
+            variable,
+            icon=self.icons["calendar"],
+            palette={
+                "accent": BLUE,
+                "accent_hover": BLUE_HOVER,
+                "panel": PANEL,
+                "text": TEXT,
+                "muted": MUTED,
+                "soft": SOFT,
+                "soft_hover": SOFT_HOVER,
+            },
+            px=self.px,
+            width=11,
+            background=background,
+        )
 
     def _field_label(self, parent, text, row, column, padx=(0, 0), bg=None):
         tk.Label(parent, text=text, bg=bg or PANEL, fg=MUTED, font=(FONT_FAMILY, 9, "bold")).grid(row=row, column=column, sticky="w", padx=padx, pady=(0, 5))
@@ -1124,7 +1202,7 @@ class App(tk.Tk):
         for item in self.recent_tree.get_children():
             self.recent_tree.delete(item)
         for sale in self.db.list_sales()[:7]:
-            self.recent_tree.insert("", "end", values=(f"#{sale['id']}", sale["sale_date"], sale["client_name"], sale["item_count"], money(sale["total_cents"])))
+            self.recent_tree.insert("", "end", values=(f"#{sale['id']}", display_date(sale["sale_date"]), sale["client_name"], sale["item_count"], money(sale["total_cents"])))
 
     def refresh_clients(self):
         rows = self.db.list_clients()
@@ -1145,7 +1223,7 @@ class App(tk.Tk):
             self.clients_tree.delete(item)
         search = self.client_search.get() if hasattr(self, "client_search") else ""
         for client in self.db.list_clients(search):
-            created = str(client["created_at"])[:10]
+            created = display_date(str(client["created_at"])[:10])
             self.clients_tree.insert("", "end", values=(client["id"], client["name"], client["notes"], created))
 
     def save_client(self):
@@ -1405,7 +1483,7 @@ class App(tk.Tk):
         self._cancel_scan_animation()
         self.current_items = []
         self.editing_sale_id = None
-        self.sale_date.set(date.today().isoformat())
+        self.sale_date_field.entry.set_date(date.today())
         self.refresh_items()
         self.scan_feedback.config(
             text="Pronto para bipar",
@@ -1418,8 +1496,8 @@ class App(tk.Tk):
             client_id = self.client_map.get(self.sale_client.get())
             if client_id is None:
                 raise ValueError("Selecione ou cadastre um cliente.")
-            date.fromisoformat(self.sale_date.get())
-            sale_id = self.db.save_sale(client_id, self.sale_date.get(), self.current_items, self.editing_sale_id)
+            sale_date = iso_date(self.sale_date.get())
+            sale_id = self.db.save_sale(client_id, sale_date, self.current_items, self.editing_sale_id)
             messagebox.showinfo("Venda", f"Venda nº {sale_id} salva com sucesso.")
             self.clear_sale()
             self.refresh_sales()
@@ -1432,7 +1510,7 @@ class App(tk.Tk):
         for item in self.sales_tree.get_children():
             self.sales_tree.delete(item)
         for sale in self.db.list_sales():
-            self.sales_tree.insert("", "end", values=(f"#{sale['id']}", sale["sale_date"], sale["client_name"], sale["item_count"], money(sale["total_cents"])))
+            self.sales_tree.insert("", "end", values=(f"#{sale['id']}", display_date(sale["sale_date"]), sale["client_name"], sale["item_count"], money(sale["total_cents"])))
 
     def edit_sale(self):
         row = self._selected(self.sales_tree)
@@ -1441,7 +1519,7 @@ class App(tk.Tk):
         sale_id = int(str(row[0]).replace("#", ""))
         sale, items = self.db.get_sale(sale_id)
         self.editing_sale_id = sale["id"]
-        self.sale_date.set(sale["sale_date"])
+        self.sale_date_field.entry.set_date(sale["sale_date"])
         client_name = next(
             (
                 name
@@ -1483,7 +1561,9 @@ class App(tk.Tk):
     def run_report(self, show_errors=True):
         try:
             client_id = self.report_client_map.get(self.report_client.get())
-            self.report_rows = self.db.revenue_report(self.start.get(), self.end.get(), client_id)
+            start = iso_date(self.start.get())
+            end = iso_date(self.end.get())
+            self.report_rows = self.db.revenue_report(start, end, client_id)
             for item in self.report_tree.get_children():
                 self.report_tree.delete(item)
             for row in self.report_rows:
@@ -1511,7 +1591,13 @@ class App(tk.Tk):
         path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF", "*.pdf")], initialfile="faturamento_bruto.pdf")
         if path:
             try:
-                revenue_pdf(path, self.report_rows, self.start.get(), self.end.get(), self.report_client.get())
+                revenue_pdf(
+                    path,
+                    self.report_rows,
+                    iso_date(self.start.get()),
+                    iso_date(self.end.get()),
+                    self.report_client.get(),
+                )
                 self.open_pdf_for_printing(path)
             except Exception as exc:
                 messagebox.showerror("Relatório de faturamento", str(exc))

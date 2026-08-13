@@ -14,6 +14,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from PIL import Image, ImageDraw, ImageTk
 
 from . import __version__
+from .branding import app_icon_png_path
 from .database import Database
 from .date_input import DateField, display_date, iso_date
 from .reports import money, product_label_pdf, product_pdf, revenue_pdf
@@ -509,10 +510,18 @@ class App(tk.Tk):
         for kind in ("home", "sales", "products", "clients", "reports", "settings", "backup", "update"):
             self.icons[f"nav_{kind}"] = self._icon_image(kind, 24, "white")
             self.icons[f"card_{kind}"] = self._icon_image(kind, 50, BLUE)
-        app_icon = self._icon_image("reports", 64, BLUE)
-        self.icons["app"] = app_icon
+        with Image.open(app_icon_png_path()) as source:
+            artwork = source.convert("RGBA")
+            app_icons = [
+                ImageTk.PhotoImage(
+                    artwork.resize((size, size), Image.Resampling.LANCZOS)
+                )
+                for size in (16, 32, 48, 256)
+            ]
+        self.icons["app_sizes"] = app_icons
+        self.icons["app"] = app_icons[-1]
         self.icons["calendar"] = self._icon_image("calendar", 20, BLUE)
-        self.iconphoto(True, app_icon)
+        self.iconphoto(True, *app_icons)
 
     def _build_shell(self):
         sidebar = tk.Frame(self, bg=NAVY, width=self.px(255))

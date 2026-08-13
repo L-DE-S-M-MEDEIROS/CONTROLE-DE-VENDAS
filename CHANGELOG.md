@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## 1.5.6 — 2026-08-13
+
+- novo ícone clean de vendas, com sacola, gráfico e indicação de crescimento;
+- o mesmo desenho passa a ser usado na janela, no EXE, no instalador e nos atalhos;
+- PNG principal em 1024 px e ICO com nove resoluções entre 16 e 256 px;
+- empacotamento atualizado para preservar o ícone em monitores Full HD e 4K.
+
 ## 1.5.5 — 2026-08-13
 
 - relatório de faturamento passa a somar e exibir a quantidade total de produtos comprados por cliente;

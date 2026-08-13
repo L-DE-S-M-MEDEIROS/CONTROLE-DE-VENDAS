@@ -7,6 +7,8 @@ from tkinter import ttk
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from PIL import Image
+
 from installer_launcher import InstallerWindow
 from sales_control.app import App, parse_money
 from sales_control.date_input import DATE_MASK, display_date, iso_date
@@ -14,6 +16,37 @@ from sales_control.theme import ThemePreferences, get_theme
 
 
 class InterfaceTests(unittest.TestCase):
+    def test_open_and_closed_app_use_the_same_high_resolution_brand_icon(self):
+        root = Path(__file__).resolve().parent.parent
+        png_path = root / "assets" / "app_icon.png"
+        ico_path = root / "assets" / "app_icon.ico"
+        with Image.open(png_path) as png:
+            self.assertEqual((1024, 1024), png.size)
+            self.assertEqual("RGBA", png.mode)
+            self.assertEqual(0, png.getpixel((0, 0))[3])
+            self.assertGreater(png.getpixel((512, 512))[3], 0)
+        with Image.open(ico_path) as icon:
+            self.assertTrue(
+                {(16, 16), (32, 32), (48, 48), (128, 128), (256, 256)}
+                <= icon.ico.sizes()
+            )
+
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "branding.db",
+                maximize=False,
+                dpi_scale_override=1.0,
+            )
+            app.withdraw()
+            try:
+                app.update_idletasks()
+                self.assertEqual(256, app.icons["app"].width())
+                self.assertEqual(256, app.icons["app"].height())
+            finally:
+                app.destroy()
+
     def test_date_mask_keeps_slashes_and_calendar_selects_the_date(self):
         self.assertEqual("13/08/26", display_date("2026-08-13"))
         self.assertEqual("2026-08-13", iso_date("13/08/26"))
@@ -267,6 +300,8 @@ class InterfaceTests(unittest.TestCase):
         window = InstallerWindow(dpi_scale_override=1.75)
         window.update()
         try:
+            self.assertEqual(256, window.app_icon.width())
+            self.assertEqual(256, window.app_icon.height())
             self.assertEqual("INSTALAR", window.install_button.cget("text"))
             self.assertEqual("Cancelar", window.cancel_button.cget("text"))
             bottom = window.winfo_rooty() + window.winfo_height()

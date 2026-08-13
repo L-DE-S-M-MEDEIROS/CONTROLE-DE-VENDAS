@@ -15,6 +15,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from sales_control import __version__ as APP_VERSION
+from sales_control.branding import app_icon_png_path
 
 APP_NAME = "Vendas PRO"
 APP_EXE = "ControleDeVendas.exe"
@@ -307,6 +308,8 @@ class InstallerWindow(tk.Tk):
         self.dpi_scale = max(1.0, min(3.0, detected_dpi / 96.0))
         self.tk.call("tk", "scaling", detected_dpi / 72.0)
         self.title(f"Instalar {APP_NAME}")
+        self.app_icon = tk.PhotoImage(file=app_icon_png_path()).subsample(4, 4)
+        self.iconphoto(True, self.app_icon)
         self.geometry(f"{self.px(660)}x{self.px(440)}")
         self.minsize(self.px(660), self.px(440))
         self.resizable(False, False)

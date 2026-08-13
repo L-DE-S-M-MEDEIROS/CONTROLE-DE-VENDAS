@@ -1,0 +1,47 @@
+# Vendas PRO 1.3.0 — instalação e atualizações
+
+## Instalar em outro computador
+
+1. Copie `ControleDeVendas-Setup.exe` e `SHA256.txt` para o computador.
+2. Se quiser conferir a integridade antes de instalar, abra o PowerShell na pasta e execute:
+
+   ```powershell
+   Get-FileHash .\ControleDeVendas-Setup.exe -Algorithm SHA256
+   ```
+
+3. Compare o resultado com `SHA256.txt`.
+4. Execute `ControleDeVendas-Setup.exe` e clique em **Instalar**.
+
+Clientes, produtos, vendas e backups ficam em `%LOCALAPPDATA%\ControleDeVendas`, separados dos arquivos do programa.
+
+## Atualização no aplicativo
+
+- O aplicativo verifica a última versão estável do GitHub Releases na abertura.
+- A verificação manual fica em **Configurações → Verificar atualizações**.
+- A janela mostra versão instalada, nova versão, descrição, **Baixar atualização** e **Agora não**.
+- O download usa somente `ControleDeVendas-Setup.exe` anexado à Release oficial.
+- `SHA256.txt` é obrigatório; qualquer diferença cancela e apaga o download.
+- Depois da validação, o usuário precisa autorizar a instalação.
+- Antes de instalar, o banco recebe um backup.
+- A versão anterior pode ser restaurada em **Configurações → Restaurar versão anterior**.
+
+## Publicar a próxima versão
+
+1. Altere `__version__` em `sales_control/__init__.py`, usando Semantic Versioning, por exemplo `1.4.0`.
+2. Atualize `CHANGELOG.md`.
+3. Execute:
+
+   ```powershell
+   python -m unittest discover -v
+   .\build_exe.ps1
+   ```
+
+4. Envie o código para a branch `main` do repositório `L-DE-S-M-MEDEIROS/CONTROLE-DE-VENDAS`.
+5. O GitHub Actions criará a tag `v1.4.0`, a Release, o changelog automático e os anexos:
+
+   - `ControleDeVendas-Setup.exe`
+   - `SHA256.txt`
+
+6. Confira a Release e não reutilize uma tag já distribuída.
+
+O repositório está público, portanto o aplicativo não precisa e não contém token. Se ele se tornar privado, use um serviço intermediário com GitHub App e token de instalação temporário; nunca coloque PAT, senha ou chave administrativa dentro do EXE.

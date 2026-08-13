@@ -1,0 +1,71 @@
+name: Publicar atualização
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Baixar o projeto
+        uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Executar testes
+        run: python -m unittest discover -v
+
+      - name: Vincular o aplicativo ao repositório
+        shell: pwsh
+        run: |
+          "GITHUB_REPOSITORY = `"${{ github.repository }}`"" | Set-Content -Encoding UTF8 sales_control/build_config.py
+
+      - name: Descobrir versão
+        id: version
+        shell: pwsh
+        run: |
+          $content = Get-Content -Raw sales_control\__init__.py
+          $version = [regex]::Match($content, '__version__\s*=\s*"([^"]+)"').Groups[1].Value
+          if (-not $version) { throw "Versão não encontrada" }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Gerar aplicativo
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --onefile --name ControleDeVendas --distpath work/payload --workpath work/pyinstaller --specpath work main.py
+
+      - name: Gerar instalador
+        shell: pwsh
+        run: |
+          $payload = (Resolve-Path "work\payload\ControleDeVendas.exe").Path
+          python -m PyInstaller --noconfirm --clean --windowed --onefile --name ControleDeVendas-Setup --add-binary "$payload;." --distpath outputs --workpath work/setup --specpath work installer_launcher.py
+
+      - name: Gerar verificação SHA-256
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash outputs\ControleDeVendas-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  ControleDeVendas-Setup.exe" | Set-Content -Encoding ASCII outputs\SHA256.txt
+
+      - name: Publicar no GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.version.outputs.version }}"
+          name: "Vendas PRO v${{ steps.version.outputs.version }}"
+          generate_release_notes: true
+          make_latest: true
+          files: |
+            outputs/ControleDeVendas-Setup.exe
+            outputs/SHA256.txt

@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.db
+build/
+dist/
+work/
+outputs/*.exe
+outputs/*.txt
+*.spec
+.venv/

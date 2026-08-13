@@ -1,0 +1,4 @@
+reportlab==4.4.3
+Pillow==11.3.0
+pyinstaller==6.15.0
+packaging>=26.0,<27

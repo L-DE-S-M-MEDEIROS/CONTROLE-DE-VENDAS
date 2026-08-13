@@ -62,7 +62,9 @@ jobs:
       - name: Gerar aplicativo
         shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --clean --windowed --onefile --icon assets/app_icon.ico --add-data "assets/app_icon.png;assets" --collect-submodules reportlab.graphics.barcode --collect-data reportlab --name ControleDeVendas --distpath work/payload --workpath work/pyinstaller --specpath work main.py
+          $appIcon = (Resolve-Path "assets/app_icon.ico").Path
+          $appIconPng = (Resolve-Path "assets/app_icon.png").Path
+          python -m PyInstaller --noconfirm --clean --windowed --onefile --icon $appIcon --add-data "$appIconPng;assets" --collect-submodules reportlab.graphics.barcode --collect-data reportlab --name ControleDeVendas --distpath work/payload --workpath work/pyinstaller --specpath work main.py
 
       - name: Validar executável empacotado
         shell: pwsh
@@ -77,7 +79,9 @@ jobs:
         shell: pwsh
         run: |
           $payload = (Resolve-Path "work\payload\ControleDeVendas.exe").Path
-          python -m PyInstaller --noconfirm --clean --windowed --onefile --icon assets/app_icon.ico --add-data "assets/app_icon.png;assets" --name ControleDeVendas-Setup --add-binary "$payload;." --distpath outputs --workpath work/setup --specpath work installer_launcher.py
+          $appIcon = (Resolve-Path "assets/app_icon.ico").Path
+          $appIconPng = (Resolve-Path "assets/app_icon.png").Path
+          python -m PyInstaller --noconfirm --clean --windowed --onefile --icon $appIcon --add-data "$appIconPng;assets" --name ControleDeVendas-Setup --add-binary "$payload;." --distpath outputs --workpath work/setup --specpath work installer_launcher.py
 
       - name: Validar instalação completa
         shell: pwsh

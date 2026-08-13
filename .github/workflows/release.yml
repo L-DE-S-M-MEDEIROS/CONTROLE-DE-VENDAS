@@ -45,7 +45,16 @@ jobs:
       - name: Gerar aplicativo
         shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --clean --windowed --onefile --name ControleDeVendas --distpath work/payload --workpath work/pyinstaller --specpath work main.py
+          python -m PyInstaller --noconfirm --clean --windowed --onefile --collect-submodules reportlab.graphics.barcode --name ControleDeVendas --distpath work/payload --workpath work/pyinstaller --specpath work main.py
+
+      - name: Validar executável empacotado
+        shell: pwsh
+        run: |
+          $app = (Resolve-Path "work\payload\ControleDeVendas.exe").Path
+          $process = Start-Process -FilePath $app -ArgumentList "--smoke-test" -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) {
+            throw "O executável empacotado falhou no teste de inicialização e etiquetas."
+          }
 
       - name: Gerar instalador
         shell: pwsh

@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## 1.5.1 — 2026-08-13
+
+- correção do executável que falhava ao iniciar por falta do módulo interno `reportlab.graphics.barcode.code93`;
+- inclusão de todos os submódulos de código de barras no empacotamento;
+- novo teste obrigatório inicia o `.exe` compilado e gera uma etiqueta antes de publicar a Release.
+
 ## 1.5.0 — 2026-08-13
 
 - ícone de impressão adicionado ao lado do ícone de copiar em cada produto;

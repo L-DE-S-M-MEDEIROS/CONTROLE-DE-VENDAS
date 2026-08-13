@@ -259,6 +259,7 @@ class App(tk.Tk):
         self.icons = {}
         self.current_page = "home"
         self._focus_job = None
+        self._scan_animation_jobs = []
         self._style()
         self._create_icons()
         self._build_shell()
@@ -279,6 +280,7 @@ class App(tk.Tk):
 
     def destroy(self):
         self._cancel_barcode_focus()
+        self._cancel_scan_animation()
         for job in getattr(self, "_startup_jobs", ()):
             try:
                 self.after_cancel(job)
@@ -305,6 +307,56 @@ class App(tk.Tk):
                 self.barcode_entry.focus_set()
 
         self._focus_job = self.after(100, focus_if_visible)
+
+    def _cancel_scan_animation(self):
+        for job in getattr(self, "_scan_animation_jobs", ()):
+            try:
+                self.after_cancel(job)
+            except tk.TclError:
+                pass
+        self._scan_animation_jobs = []
+
+    def _animate_scan_success(self, item_index, product_name, quantity):
+        self._cancel_scan_animation()
+        item_id = str(item_index)
+        if self.items.exists(item_id):
+            self.items.item(item_id, tags=("scan_success",))
+            self.items.focus(item_id)
+            self.items.see(item_id)
+        self.scan_feedback.config(
+            text=f"✓  {quantity}x {product_name} adicionado",
+            fg=GREEN,
+            font=(FONT_FAMILY, 9, "bold"),
+        )
+
+        def soften():
+            if self.items.winfo_exists() and self.items.exists(item_id):
+                self.items.item(item_id, tags=("scan_success_soft",))
+            if self.scan_feedback.winfo_exists():
+                self.scan_feedback.config(fg=GREEN_HOVER)
+
+        def brighten():
+            if self.items.winfo_exists() and self.items.exists(item_id):
+                self.items.item(item_id, tags=("scan_success",))
+            if self.scan_feedback.winfo_exists():
+                self.scan_feedback.config(fg=GREEN)
+
+        def finish():
+            self._scan_animation_jobs = []
+            if self.items.winfo_exists() and self.items.exists(item_id):
+                self.items.item(item_id, tags=())
+            if self.scan_feedback.winfo_exists():
+                self.scan_feedback.config(
+                    text="Pronto para a próxima bipagem",
+                    fg=MUTED,
+                    font=(FONT_FAMILY, 9),
+                )
+
+        self._scan_animation_jobs = [
+            self.after(110, soften),
+            self.after(230, brighten),
+            self.after(850, finish),
+        ]
 
     def px(self, value):
         return max(1, int(round(value * self.dpi_scale)))
@@ -649,7 +701,43 @@ class App(tk.Tk):
         self.barcode_entry = ttk.Entry(scan, textvariable=self.barcode, font=("Consolas", 16))
         self.barcode_entry.pack(side="left", fill="x", expand=True, padx=12)
         self.barcode_entry.bind("<Return>", lambda _event: self.scan())
+        self.scan_feedback = tk.Label(
+            scan,
+            text="Pronto para bipar",
+            bg=PANEL,
+            fg=MUTED,
+            font=(FONT_FAMILY, 9),
+            width=29,
+            anchor="e",
+        )
+        self.scan_feedback.pack(side="left", padx=(0, self.px(12)))
         ttk.Button(scan, text="ADICIONAR ITEM", style="Accent.TButton", command=self.scan).pack(side="left")
+
+        actions = tk.Frame(new, bg=PANEL)
+        actions.pack(side="bottom", fill="x", pady=(14, 0))
+        self.remove_item_button = ttk.Button(
+            actions,
+            text="REMOVER ITEM",
+            style="Danger.TButton",
+            command=self.remove_item,
+        )
+        self.remove_item_button.pack(side="left")
+        self.clear_sale_button = ttk.Button(
+            actions,
+            text="LIMPAR VENDA",
+            style="TButton",
+            command=self.clear_sale,
+        )
+        self.clear_sale_button.pack(side="left", padx=8)
+        self.finish_sale_button = ttk.Button(
+            actions,
+            text="FINALIZAR VENDA",
+            style="Success.TButton",
+            command=self.finish_sale,
+        )
+        self.finish_sale_button.pack(side="right")
+        self.sale_total = tk.Label(actions, text="TOTAL: R$ 0,00", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 18, "bold"))
+        self.sale_total.pack(side="right", padx=24)
 
         table_box = tk.Frame(new, bg=PANEL)
         table_box.pack(fill="both", expand=True)
@@ -659,15 +747,9 @@ class App(tk.Tk):
         ]:
             self.items.heading(column, text=title, anchor="center")
             self.items.column(column, width=width, anchor="center")
+        self.items.tag_configure("scan_success", background=GREEN, foreground="white")
+        self.items.tag_configure("scan_success_soft", background=SELECTED, foreground=TEXT)
         self.items.pack(fill="both", expand=True)
-
-        actions = tk.Frame(new, bg=PANEL)
-        actions.pack(fill="x", pady=(14, 0))
-        ttk.Button(actions, text="Remover item", style="Danger.TButton", command=self.remove_item).pack(side="left")
-        ttk.Button(actions, text="Limpar venda", command=self.clear_sale).pack(side="left", padx=8)
-        ttk.Button(actions, text="FINALIZAR VENDA", style="Success.TButton", command=self.finish_sale).pack(side="right")
-        self.sale_total = tk.Label(actions, text="TOTAL: R$ 0,00", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 18, "bold"))
-        self.sale_total.pack(side="right", padx=24)
 
         history_header = tk.Frame(history, bg=PANEL)
         history_header.pack(fill="x", pady=(0, 12))
@@ -954,6 +1036,7 @@ class App(tk.Tk):
         self.configure(bg=BG)
 
         self._cancel_barcode_focus()
+        self._cancel_scan_animation()
         for child in self.winfo_children():
             child.destroy()
         self.pages = {}
@@ -1285,11 +1368,14 @@ class App(tk.Tk):
             existing = next((item for item in self.current_items if item["product_id"] == product["id"] and item["unit_price_cents"] == product["price_cents"]), None)
             if existing:
                 existing["quantity"] += quantity
+                item_index = self.current_items.index(existing)
             else:
                 self.current_items.append({"product_id": product["id"], "product_name": product["name"], "quantity": quantity, "unit_price_cents": product["price_cents"]})
+                item_index = len(self.current_items) - 1
             self.qty.set("1")
             self.barcode.set("")
             self.refresh_items()
+            self._animate_scan_success(item_index, product["name"], quantity)
             self.barcode_entry.focus_set()
         except Exception as exc:
             messagebox.showerror("Bipagem", str(exc))
@@ -1306,14 +1392,26 @@ class App(tk.Tk):
     def remove_item(self):
         selected = self.items.selection()
         if selected:
+            self._cancel_scan_animation()
             self.current_items.pop(int(selected[0]))
             self.refresh_items()
+            self.scan_feedback.config(
+                text="Item removido; pronto para bipar",
+                fg=MUTED,
+                font=(FONT_FAMILY, 9),
+            )
 
     def clear_sale(self):
+        self._cancel_scan_animation()
         self.current_items = []
         self.editing_sale_id = None
         self.sale_date.set(date.today().isoformat())
         self.refresh_items()
+        self.scan_feedback.config(
+            text="Pronto para bipar",
+            fg=MUTED,
+            font=(FONT_FAMILY, 9),
+        )
 
     def finish_sale(self):
         try:

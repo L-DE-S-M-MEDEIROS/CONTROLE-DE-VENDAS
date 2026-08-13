@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## 1.5.3 — 2026-08-13
+
+- rodapé da nova venda reorganizado para manter sempre visíveis os textos dos botões **Remover item**, **Limpar venda** e **Finalizar venda**;
+- confirmação visual rápida após cada bipagem, destacando em verde a linha do produto adicionado;
+- mensagem temporária mostra a quantidade e o nome do produto reconhecido, sem interromper a próxima leitura;
+- novos testes verificam o encaixe dos botões e o retorno visual da bipagem.
+
 ## 1.5.2 — 2026-08-13
 
 - banco SQLite otimizado com modo WAL, espera segura para gravações simultâneas e novos índices;

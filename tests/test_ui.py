@@ -12,6 +12,70 @@ from sales_control.theme import ThemePreferences, get_theme
 
 
 class InterfaceTests(unittest.TestCase):
+    def test_sales_footer_buttons_are_visible_and_keep_their_text(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "sales_footer.db",
+                maximize=False,
+                dpi_scale_override=1.0,
+            )
+            app.geometry("1600x900")
+            app.show_page("sales")
+            app.update()
+            try:
+                tab_bottom = (
+                    app.sales_new_tab.winfo_rooty()
+                    + app.sales_new_tab.winfo_height()
+                )
+                expected = (
+                    (app.remove_item_button, "REMOVER ITEM"),
+                    (app.clear_sale_button, "LIMPAR VENDA"),
+                    (app.finish_sale_button, "FINALIZAR VENDA"),
+                )
+                for button, text in expected:
+                    self.assertEqual(text, button.cget("text"))
+                    self.assertGreater(button.winfo_height(), 30)
+                    self.assertLessEqual(
+                        button.winfo_rooty() + button.winfo_height(),
+                        tab_bottom,
+                    )
+            finally:
+                app.destroy()
+
+    def test_successful_scan_flashes_the_product_and_confirms_quantity(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "scan_feedback.db",
+                maximize=False,
+                dpi_scale_override=1.0,
+            )
+            app.withdraw()
+            app.update()
+            try:
+                product_id = app.db.add_product("Produto bipado", 2990)
+                product = next(
+                    row
+                    for row in app.db.list_products()
+                    if row["id"] == product_id
+                )
+                app.qty.set("3")
+                app.barcode.set(product["barcode"])
+                app.scan()
+
+                self.assertEqual(3, app.current_items[0]["quantity"])
+                self.assertIn("3x Produto bipado", app.scan_feedback.cget("text"))
+                self.assertEqual(
+                    ("scan_success",), tuple(app.items.item("0", "tags"))
+                )
+                self.assertEqual("1", app.qty.get())
+                self.assertEqual("", app.barcode.get())
+            finally:
+                app.destroy()
+
     def test_money_input_accepts_brazilian_formats_without_float_rounding(self):
         self.assertEqual(123_456, parse_money("R$ 1.234,56"))
         self.assertEqual(123_400, parse_money("1.234"))

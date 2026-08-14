@@ -33,6 +33,7 @@ class InterfaceTests(unittest.TestCase):
                 first_page = app.motion.page_widget
                 self.assertIs(first_page, app.pages["products"])
                 self.assertEqual("place", first_page.winfo_manager())
+                self.assertEqual(5, app.motion.FRAME_MS)
                 self.assertEqual("products", app.current_page)
 
                 app.show_page("clients")
@@ -50,7 +51,8 @@ class InterfaceTests(unittest.TestCase):
                 app.after(250, app.quit)
                 app.mainloop()
                 self.assertIsNone(app.motion.page_widget)
-                self.assertEqual("grid", app.pages["sales"].winfo_manager())
+                self.assertEqual("place", app.pages["sales"].winfo_manager())
+                self.assertEqual("0", app.pages["sales"].place_info()["x"])
             finally:
                 app.destroy()
 

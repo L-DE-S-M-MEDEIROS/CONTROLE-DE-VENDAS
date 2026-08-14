@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## 1.6.2 — 2026-08-14
+
+- animação de navegação refeita para não trocar o gerenciador de layout das páginas;
+- correção da piscada rápida observada ao abrir os módulos pelo menu lateral;
+- ciclo visual solicitado a cada 5 ms, equivalente a até 200 atualizações por segundo;
+- transição de 180 ms com aceleração e desaceleração suaves;
+- primeira posição preparada antes de exibir a nova página, evitando saltos visuais.
+
 ## 1.6.1 — 2026-08-14
 
 - navegação lateral redesenhada com deslocamento mínimo de 9 px em apenas 130 ms;

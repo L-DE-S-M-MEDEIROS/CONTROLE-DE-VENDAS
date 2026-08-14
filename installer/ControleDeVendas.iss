@@ -1,5 +1,5 @@
 #define MyAppName "Vendas PRO - Controle de Vendas"
-#define MyAppVersion "1.6.1"
+#define MyAppVersion "1.6.2"
 #define MyAppPublisher "Vendas L de S"
 #define MyAppExeName "ControleDeVendas.exe"
 

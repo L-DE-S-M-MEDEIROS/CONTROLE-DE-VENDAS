@@ -626,12 +626,10 @@ class App(tk.Tk):
 
         self.content = tk.Frame(main, bg=BG)
         self.content.pack(fill="both", expand=True, padx=self.px(26), pady=self.px(22))
-        self.content.grid_rowconfigure(0, weight=1)
-        self.content.grid_columnconfigure(0, weight=1)
 
     def _new_page(self, key):
         page = tk.Frame(self.content, bg=BG)
-        page.grid(row=0, column=0, sticky="nsew")
+        page.place(x=0, y=0, relwidth=1.0, relheight=1.0)
         self.pages[key] = page
         return page
 
@@ -1185,7 +1183,7 @@ class App(tk.Tk):
         }
         should_animate = key != self.current_page if animate is None else animate
         self._cancel_barcode_focus()
-        self.pages[key].tkraise()
+        self.motion.present_page(self.pages[key], animate=should_animate)
         self.current_page = key
         title, subtitle = titles[key]
         self.header_title.config(text=title)
@@ -1207,8 +1205,6 @@ class App(tk.Tk):
             self.run_report(show_errors=False)
         elif key == "settings":
             self._refresh_update_settings()
-        if should_animate:
-            self.motion.slide_page(self.pages[key])
 
     def refresh_all(self):
         self.refresh_clients()

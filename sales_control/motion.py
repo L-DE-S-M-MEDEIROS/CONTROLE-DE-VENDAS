@@ -5,15 +5,16 @@ import tkinter as tk
 from collections.abc import Callable
 
 
-def _ease_out_cubic(progress: float) -> float:
+def _smoothstep(progress: float) -> float:
     progress = max(0.0, min(1.0, progress))
-    return 1.0 - (1.0 - progress) ** 3
+    return progress**3 * (progress * (progress * 6.0 - 15.0) + 10.0)
 
 
 class MotionController:
     """Short, neutral and cancellable motion for the desktop interface."""
 
-    FRAME_MS = 12
+    FRAME_MS = 5
+    PAGE_DURATION = 0.18
 
     def __init__(self, root: tk.Misc, px: Callable[[float], int]):
         self.root = root
@@ -64,8 +65,7 @@ class MotionController:
             return
         try:
             if page.winfo_exists():
-                page.place_forget()
-                page.grid(row=0, column=0, sticky="nsew")
+                page.place_configure(x=0)
                 page.tkraise()
         except tk.TclError:
             pass
@@ -79,26 +79,31 @@ class MotionController:
         self._destroy(self.toast_widget)
         self.toast_widget = None
 
-    def slide_page(self, page: tk.Widget):
-        """Move a page a few pixels into place without overlays or color effects."""
+    def present_page(self, page: tk.Widget, *, animate: bool):
+        """Raise a page once and move it smoothly without changing layout managers."""
 
         group = "page"
         self._cancel_group(group)
         self._restore_page()
 
-        distance = self.px(9)
-        page.grid_remove()
-        page.place(x=distance, y=0, relwidth=1.0, relheight=1.0)
+        distance = self.px(14) if animate else 0
+        page.place_configure(x=distance)
         page.tkraise()
+        if not animate:
+            return
+
         self.page_widget = page
-        started = time.monotonic()
-        duration = 0.13
+        started: float | None = None
 
         def step():
+            nonlocal started
             if self.page_widget is not page:
                 return
-            progress = min(1.0, (time.monotonic() - started) / duration)
-            offset = round(distance * (1.0 - _ease_out_cubic(progress)))
+            now = time.perf_counter()
+            if started is None:
+                started = now
+            progress = min(1.0, (now - started) / self.PAGE_DURATION)
+            offset = round(distance * (1.0 - _smoothstep(progress)))
             page.place_configure(x=offset)
             if progress < 1.0:
                 self._schedule(group, self.FRAME_MS, step)
@@ -173,7 +178,7 @@ class MotionController:
                 if self.toast_widget is not toast:
                     return
                 progress = min(1.0, (time.monotonic() - started) / duration)
-                eased = _ease_out_cubic(progress)
+                eased = _smoothstep(progress)
                 current_x = round(start_x + (end_x - start_x) * eased)
                 toast.place_configure(x=current_x)
                 if progress < 1.0:

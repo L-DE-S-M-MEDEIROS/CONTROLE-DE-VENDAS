@@ -47,6 +47,45 @@ class CloudSyncTests(unittest.TestCase):
         with self.assertRaisesRegex(CloudError, "Somente o e-mail autorizado"):
             client.login("outra-conta@example.com", "senha")
 
+    def test_cloud_client_uses_the_isolated_controle_vendas_api(self):
+        class RecordingClient(SupabaseClient):
+            def __init__(self, path):
+                super().__init__(path)
+                self.calls = []
+
+            def _rest(self, method, path, payload=None, headers=None):
+                self.calls.append((method, path, payload, headers))
+                if path == "rpc/controle_vendas_snapshot":
+                    return {
+                        "products": [],
+                        "clients": [],
+                        "sales": [],
+                        "sale_items": [],
+                    }
+                return 1
+
+        client = RecordingClient(self.root / "isolated-session.dat")
+        client.save_product({"id": "produto"})
+        client.save_client({"id": "cliente"})
+        client.save_sale({"id": "venda"}, [])
+        client.delete_sale("venda", 1)
+        self.assertEqual(
+            {"products": [], "clients": [], "sales": [], "sale_items": []},
+            client.fetch_snapshot(),
+        )
+        paths = [call[1] for call in client.calls]
+        self.assertEqual(
+            [
+                "rpc/controle_vendas_save_product",
+                "rpc/controle_vendas_save_client",
+                "rpc/controle_vendas_save_sale",
+                "rpc/controle_vendas_delete_sale",
+                "rpc/controle_vendas_snapshot",
+            ],
+            paths,
+        )
+        self.assertFalse(any("vendas_pro_" in path for path in paths))
+
     def test_session_token_is_protected_on_disk(self):
         path = self.root / "session.dat"
         store = SessionStore(path)

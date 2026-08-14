@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## 1.7.3 — 2026-08-14
+
+- dados online movidos para o schema exclusivo **controle_vendas** no Supabase;
+- tabelas do outro projeto permanecem separadas e não são alteradas pelo aplicativo;
+- sincronização passa a usar uma API autenticada própria, sem expor o novo schema diretamente;
+- produtos, clientes e vendas já sincronizados são preservados durante a migração.
+
 ## 1.7.2 — 2026-08-14
 
 - e-mail da conta Supabase removido da área visível de Configurações;

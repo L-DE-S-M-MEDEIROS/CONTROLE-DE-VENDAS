@@ -7,7 +7,6 @@ import os
 import threading
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from ctypes import wintypes
 from pathlib import Path
@@ -269,20 +268,20 @@ class SupabaseClient:
 
     def save_product(self, record: dict) -> int:
         revision = self._rest(
-            "POST", "rpc/vendas_pro_save_product", {"product_record": record}
+            "POST", "rpc/controle_vendas_save_product", {"product_record": record}
         )
         return int(revision)
 
     def save_client(self, record: dict) -> int:
         revision = self._rest(
-            "POST", "rpc/vendas_pro_save_client", {"client_record": record}
+            "POST", "rpc/controle_vendas_save_client", {"client_record": record}
         )
         return int(revision)
 
     def save_sale(self, sale_record: dict, item_records: list[dict]) -> int:
         revision = self._rest(
             "POST",
-            "rpc/vendas_pro_save_sale",
+            "rpc/controle_vendas_save_sale",
             {
                 "sale_record": sale_record,
                 "item_records": item_records,
@@ -294,7 +293,7 @@ class SupabaseClient:
     def delete_sale(self, cloud_id: str, expected_revision: int) -> int:
         revision = self._rest(
             "POST",
-            "rpc/vendas_pro_delete_sale",
+            "rpc/controle_vendas_delete_sale",
             {
                 "target_sale_id": cloud_id,
                 "expected_revision": int(expected_revision),
@@ -302,42 +301,14 @@ class SupabaseClient:
         )
         return int(revision)
 
-    def _fetch_all(self, table: str, columns: str) -> list[dict]:
-        rows = []
-        page_size = 1000
-        while True:
-            start = len(rows)
-            encoded_columns = urllib.parse.quote(columns, safe="*,()")
-            page = self._rest(
-                "GET",
-                f"{table}?select={encoded_columns}&order=created_at.asc",
-                headers={"Range": f"{start}-{start + page_size - 1}"},
-            )
-            if not isinstance(page, list):
-                raise CloudError("O Supabase retornou dados em formato inesperado.")
-            rows.extend(page)
-            if len(page) < page_size:
-                return rows
-
     def fetch_snapshot(self) -> dict[str, list[dict]]:
-        return {
-            "products": self._fetch_all(
-                "vendas_pro_products",
-                "id,name,price_cents,barcode,active,created_at,updated_at,deleted_at,revision",
-            ),
-            "clients": self._fetch_all(
-                "vendas_pro_clients",
-                "id,name,notes,active,created_at,updated_at,deleted_at,revision",
-            ),
-            "sales": self._fetch_all(
-                "vendas_pro_sales",
-                "id,client_id,sale_date,total_cents,created_at,updated_at,deleted_at,revision",
-            ),
-            "sale_items": self._fetch_all(
-                "vendas_pro_sale_items",
-                "id,sale_id,product_id,product_name,quantity,unit_price_cents,subtotal_cents,created_at,updated_at,revision",
-            ),
-        }
+        snapshot = self._rest("POST", "rpc/controle_vendas_snapshot", {})
+        expected = {"products", "clients", "sales", "sale_items"}
+        if not isinstance(snapshot, dict) or not expected.issubset(snapshot):
+            raise CloudError("O Supabase retornou dados em formato inesperado.")
+        if any(not isinstance(snapshot[key], list) for key in expected):
+            raise CloudError("O Supabase retornou dados em formato inesperado.")
+        return {key: snapshot[key] for key in expected}
 
 
 class CloudSyncManager:

@@ -1080,15 +1080,16 @@ class App(tk.Tk):
         ).pack(anchor="w", pady=(self.px(4), self.px(12)))
         credentials = tk.Frame(cloud_content, bg=PANEL)
         credentials.pack(fill="x")
-        tk.Label(
+        self.cloud_account_label = tk.Label(
             credentials,
-            text=AUTHORIZED_EMAIL,
+            text="Conta autorizada da empresa",
             bg=SOFT,
             fg=TEXT,
             padx=self.px(12),
             pady=self.px(8),
             font=(FONT_FAMILY, 9, "bold"),
-        ).pack(side="left")
+        )
+        self.cloud_account_label.pack(side="left")
         self.cloud_password = tk.StringVar()
         self.cloud_password_entry = ttk.Entry(
             credentials,

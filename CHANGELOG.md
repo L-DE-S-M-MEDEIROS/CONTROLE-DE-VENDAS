@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## 1.7.2 — 2026-08-14
+
+- e-mail da conta Supabase removido da área visível de Configurações;
+- identificação substituída pelo texto neutro **Conta autorizada da empresa**;
+- senha continua sendo validada exclusivamente pelo Supabase Auth e não é gravada no aplicativo;
+- teste de interface impede que um endereço de e-mail volte a aparecer nesse componente.
+
 ## 1.7.1 — 2026-08-14
 
 - janelas secundárias passam a abrir centralizadas sobre o aplicativo, inclusive em monitores com DPI elevado;

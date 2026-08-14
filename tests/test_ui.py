@@ -81,6 +81,10 @@ class InterfaceTests(unittest.TestCase):
                 self.assertEqual("normal", str(app.cloud_connect_button["state"]))
                 self.assertEqual("disabled", str(app.cloud_sync_button["state"]))
                 self.assertIn("Conta não conectada", app.cloud_status["text"])
+                self.assertEqual(
+                    "Conta autorizada da empresa", app.cloud_account_label["text"]
+                )
+                self.assertNotIn("@", app.cloud_account_label["text"])
                 self.assertEqual("", app.cloud_password.get())
             finally:
                 app.destroy()

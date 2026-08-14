@@ -214,7 +214,7 @@ class FlowTests(unittest.TestCase):
         second = next(row for row in self.db.list_products() if row["id"] == second_id)
         self.assertNotEqual(first["barcode"], second["barcode"])
 
-    def test_barcode_sequence_migration_respects_legacy_deleted_ids(self):
+    def test_barcode_generation_is_unique_after_legacy_migration(self):
         legacy_path = self.root / "legacy.db"
         with closing(sqlite3.connect(legacy_path)) as connection:
             connection.executescript(
@@ -236,7 +236,116 @@ class FlowTests(unittest.TestCase):
         migrated = Database(legacy_path)
         new_id = migrated.add_product("Produto novo", 200)
         product = next(row for row in migrated.list_products() if row["id"] == new_id)
-        self.assertEqual(Database._barcode_for_serial(2), product["barcode"])
+        self.assertEqual(13, len(product["barcode"]))
+        self.assertNotEqual("2900000000018", product["barcode"])
+
+    def test_copies_of_the_same_legacy_database_receive_the_same_cloud_ids(self):
+        paths = (self.root / "legacy-a.db", self.root / "legacy-b.db")
+        for path in paths:
+            with closing(sqlite3.connect(path)) as connection:
+                connection.executescript(
+                    """
+                    CREATE TABLE products (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL COLLATE NOCASE,
+                        price_cents INTEGER NOT NULL CHECK(price_cents >= 0),
+                        barcode TEXT NOT NULL UNIQUE,
+                        active INTEGER NOT NULL DEFAULT 1,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    INSERT INTO products(name, price_cents, barcode)
+                    VALUES('Produto compartilhado', 100, '2900000000018');
+                    """
+                )
+                connection.commit()
+        first = Database(paths[0]).list_products()[0]
+        second = Database(paths[1]).list_products()[0]
+        self.assertEqual(first["cloud_id"], second["cloud_id"])
+
+    def test_local_changes_are_queued_with_cross_machine_ids(self):
+        product_id = self.db.add_product("Produto", 500)
+        client_id = self.db.add_client("Cliente")
+        self.db.save_sale(
+            client_id,
+            "2026-08-14",
+            [
+                {
+                    "product_id": product_id,
+                    "product_name": "Produto",
+                    "quantity": 2,
+                    "unit_price_cents": 500,
+                }
+            ],
+        )
+        changes = self.db.pending_sync_changes()
+        self.assertEqual(["product", "client", "sale"], [row["entity_type"] for row in changes])
+        self.assertEqual(3, len({row["entity_cloud_id"] for row in changes}))
+
+    def test_cloud_snapshot_populates_another_machine_without_outbox(self):
+        second = Database(self.root / "second.db")
+        product_cloud_id = "2b0abf73-05fc-46a2-85be-ef3c7c399505"
+        client_cloud_id = "a7e93c78-1367-4983-97f4-5b8db7490f44"
+        sale_cloud_id = "054d5fe5-3a98-4c65-8391-e74cc8938fc8"
+        item_cloud_id = "d305308e-506f-4c05-9ddd-a9f0cf69cdf2"
+        second.apply_cloud_snapshot(
+            {
+                "products": [
+                    {
+                        "id": product_cloud_id,
+                        "name": "Produto nuvem",
+                        "price_cents": 990,
+                        "barcode": "2901234567892",
+                        "active": True,
+                        "created_at": "2026-08-14T12:00:00+00:00",
+                        "updated_at": "2026-08-14T12:00:00+00:00",
+                        "deleted_at": None,
+                        "revision": 1,
+                    }
+                ],
+                "clients": [
+                    {
+                        "id": client_cloud_id,
+                        "name": "Cliente nuvem",
+                        "notes": "",
+                        "active": True,
+                        "created_at": "2026-08-14T12:00:00+00:00",
+                        "updated_at": "2026-08-14T12:00:00+00:00",
+                        "deleted_at": None,
+                        "revision": 1,
+                    }
+                ],
+                "sales": [
+                    {
+                        "id": sale_cloud_id,
+                        "client_id": client_cloud_id,
+                        "sale_date": "2026-08-14",
+                        "total_cents": 1980,
+                        "created_at": "2026-08-14T12:00:00+00:00",
+                        "updated_at": "2026-08-14T12:00:00+00:00",
+                        "deleted_at": None,
+                        "revision": 1,
+                    }
+                ],
+                "sale_items": [
+                    {
+                        "id": item_cloud_id,
+                        "sale_id": sale_cloud_id,
+                        "product_id": product_cloud_id,
+                        "product_name": "Produto nuvem",
+                        "quantity": 2,
+                        "unit_price_cents": 990,
+                        "subtotal_cents": 1980,
+                        "created_at": "2026-08-14T12:00:00+00:00",
+                        "updated_at": "2026-08-14T12:00:00+00:00",
+                        "revision": 1,
+                    }
+                ],
+            }
+        )
+        self.assertEqual("Produto nuvem", second.list_products()[0]["name"])
+        self.assertEqual("Cliente nuvem", second.list_clients()[0]["name"])
+        self.assertEqual(1980, second.list_sales()[0]["total_cents"])
+        self.assertEqual(0, second.pending_sync_count())
 
     def test_backups_are_unique_and_valid_even_when_created_immediately(self):
         first = self.db.backup(self.root / "backups")

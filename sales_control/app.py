@@ -15,6 +15,8 @@ from PIL import Image, ImageDraw, ImageTk
 
 from . import __version__
 from .branding import app_icon_png_path
+from .cloud_config import AUTHORIZED_EMAIL
+from .cloud_sync import CloudConflictError, CloudSyncManager
 from .database import Database
 from .date_input import DateField, display_date, iso_date
 from .motion import MotionController
@@ -252,6 +254,10 @@ class App(tk.Tk):
         _apply_palette(self.theme_key)
         self.configure(bg=BG)
         self.db = Database(db_path or base / "controle_vendas.db")
+        self.cloud = CloudSyncManager(self.db, base / "supabase_session.dat")
+        self._cloud_sync_running = False
+        self._cloud_periodic_job = None
+        self._cloud_change_job = None
         self.current_items = []
         self.editing_sale_id = None
         self.editing_client_id = None
@@ -281,6 +287,11 @@ class App(tk.Tk):
         self._startup_jobs.append(
             self.after(3000, lambda: self.check_updates(silent=True))
         )
+        if db_path is None and self.cloud.has_session:
+            self._startup_jobs.append(
+                self.after(1200, lambda: self.request_cloud_sync(silent=True))
+            )
+        self._schedule_periodic_cloud_sync()
 
     def destroy(self):
         self._cancel_barcode_focus()
@@ -292,6 +303,18 @@ class App(tk.Tk):
             except tk.TclError:
                 pass
         self._startup_jobs = []
+        if self._cloud_periodic_job is not None:
+            try:
+                self.after_cancel(self._cloud_periodic_job)
+            except tk.TclError:
+                pass
+            self._cloud_periodic_job = None
+        if self._cloud_change_job is not None:
+            try:
+                self.after_cancel(self._cloud_change_job)
+            except tk.TclError:
+                pass
+            self._cloud_change_job = None
         super().destroy()
 
     def _cancel_barcode_focus(self):
@@ -1001,6 +1024,83 @@ class App(tk.Tk):
         self._theme_option(theme_options, "dark", 0)
         self._theme_option(theme_options, "light", 1)
 
+        cloud_panel = self._panel(page)
+        cloud_panel.pack(fill="x", pady=(0, self.px(16)))
+        cloud_content = tk.Frame(
+            cloud_panel, bg=PANEL, padx=self.px(26), pady=self.px(20)
+        )
+        cloud_content.pack(fill="x")
+        tk.Label(
+            cloud_content,
+            text="DADOS ONLINE — SUPABASE",
+            bg=PANEL,
+            fg=TEXT,
+            font=(FONT_FAMILY, 13, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            cloud_content,
+            text=(
+                "A mesma conta sincroniza clientes, produtos e vendas nas duas máquinas. "
+                "Sem internet, o trabalho permanece salvo localmente."
+            ),
+            bg=PANEL,
+            fg=MUTED,
+            wraplength=self.px(1050),
+            justify="left",
+            font=(FONT_FAMILY, 9),
+        ).pack(anchor="w", pady=(self.px(4), self.px(12)))
+        credentials = tk.Frame(cloud_content, bg=PANEL)
+        credentials.pack(fill="x")
+        tk.Label(
+            credentials,
+            text=AUTHORIZED_EMAIL,
+            bg=SOFT,
+            fg=TEXT,
+            padx=self.px(12),
+            pady=self.px(8),
+            font=(FONT_FAMILY, 9, "bold"),
+        ).pack(side="left")
+        self.cloud_password = tk.StringVar()
+        self.cloud_password_entry = ttk.Entry(
+            credentials,
+            textvariable=self.cloud_password,
+            show="•",
+            width=32,
+        )
+        self.cloud_password_entry.pack(side="left", padx=self.px(10))
+        self.cloud_connect_button = ttk.Button(
+            credentials,
+            text="Conectar conta",
+            style="Accent.TButton",
+            command=self.connect_cloud,
+        )
+        self.cloud_connect_button.pack(side="left")
+        self.cloud_sync_button = ttk.Button(
+            credentials, text="Sincronizar agora", command=self.request_cloud_sync
+        )
+        self.cloud_sync_button.pack(side="left", padx=self.px(8))
+        self.cloud_disconnect_button = ttk.Button(
+            credentials, text="Desconectar", command=self.disconnect_cloud
+        )
+        self.cloud_disconnect_button.pack(side="left")
+        self.cloud_conflict_button = ttk.Button(
+            credentials,
+            text="Resolver conflito",
+            command=self.resolve_cloud_conflicts,
+        )
+        self.cloud_conflict_button.pack(side="right")
+        self.cloud_status = tk.Label(
+            cloud_content,
+            text="",
+            bg=SOFT,
+            fg=BLUE,
+            padx=self.px(12),
+            pady=self.px(8),
+            font=(FONT_FAMILY, 9, "bold"),
+        )
+        self.cloud_status.pack(fill="x", pady=(self.px(12), 0))
+        self._refresh_cloud_controls()
+
         panel = self._panel(page)
         panel.pack(fill="x")
 
@@ -1150,6 +1250,139 @@ class App(tk.Tk):
         if hasattr(self, "rollback_button"):
             self.rollback_button.config(state="normal" if rollback_available() else "disabled")
 
+    def _refresh_cloud_controls(self, message=None, error=False):
+        if not hasattr(self, "cloud_status") or not self.cloud_status.winfo_exists():
+            return
+        connected = self.cloud.has_session
+        pending = self.db.pending_sync_count()
+        conflicts = self.db.unresolved_conflict_count()
+        if message is None:
+            if connected:
+                message = f"Conta conectada • {pending} alteração(ões) aguardando envio"
+            else:
+                message = f"Conta não conectada • {pending} alteração(ões) salvas localmente"
+            if conflicts:
+                message += f" • {conflicts} conflito(s) para resolver"
+        self.cloud_status.config(text=message, fg=RED if error else BLUE)
+        state = "disabled" if self._cloud_sync_running else "normal"
+        self.cloud_connect_button.config(
+            state="disabled" if connected or self._cloud_sync_running else "normal"
+        )
+        self.cloud_password_entry.config(
+            state="disabled" if connected or self._cloud_sync_running else "normal"
+        )
+        self.cloud_sync_button.config(state=state if connected else "disabled")
+        self.cloud_disconnect_button.config(state=state if connected else "disabled")
+        self.cloud_conflict_button.config(
+            state=state if conflicts else "disabled"
+        )
+
+    def connect_cloud(self):
+        password = self.cloud_password.get()
+        if not password:
+            return messagebox.showwarning(
+                "Dados online", "Informe a senha da conta autorizada."
+            )
+        self.cloud_password.set("")
+        self._start_cloud_worker(password=password, silent=False)
+
+    def request_cloud_sync(self, silent=False):
+        if not self.cloud.has_session:
+            if not silent:
+                messagebox.showwarning(
+                    "Dados online",
+                    "Conecte a conta autorizada em Configurações para sincronizar.",
+                )
+            return
+        self._start_cloud_worker(password=None, silent=silent)
+
+    def _start_cloud_worker(self, password=None, silent=False):
+        if self._cloud_sync_running:
+            return
+        self._cloud_sync_running = True
+        action = "Conectando e sincronizando..." if password else "Sincronizando dados..."
+        self._refresh_cloud_controls(action)
+
+        def worker():
+            try:
+                if password is not None:
+                    result = self.cloud.login_and_sync(AUTHORIZED_EMAIL, password)
+                else:
+                    result = self.cloud.sync_once()
+                self.after(0, lambda: self._cloud_sync_finished(result, silent))
+            except Exception as exc:
+                self.after(
+                    0,
+                    lambda error=exc: self._cloud_sync_failed(error, silent),
+                )
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _cloud_sync_finished(self, result, silent):
+        self._cloud_sync_running = False
+        self.refresh_all()
+        message = (
+            f"Sincronizado agora • {result.get('uploaded', 0)} envio(s) • "
+            f"{result.get('downloaded', 0)} registro(s) conferidos"
+        )
+        self._refresh_cloud_controls(message)
+        if not silent:
+            self._show_success("Dados sincronizados com o Supabase.")
+
+    def _cloud_sync_failed(self, error, silent):
+        self._cloud_sync_running = False
+        self._refresh_cloud_controls(str(error), error=True)
+        if isinstance(error, CloudConflictError) or not silent:
+            messagebox.showwarning("Dados online", str(error))
+
+    def disconnect_cloud(self):
+        if not messagebox.askyesno(
+            "Desconectar conta",
+            "Desconectar esta máquina? Os dados locais não serão apagados.",
+        ):
+            return
+        self.cloud.logout()
+        self._refresh_cloud_controls("Conta desconectada. Os dados locais foram mantidos.")
+
+    def resolve_cloud_conflicts(self):
+        choice = messagebox.askyesnocancel(
+            "Resolver edição simultânea",
+            "Duas máquinas editaram o mesmo registro.\n\n"
+            "SIM: manter a alteração deste computador.\n"
+            "NÃO: manter a versão que já está no Supabase.\n"
+            "CANCELAR: decidir depois.",
+        )
+        if choice is None:
+            return
+        self.db.resolve_conflicts(keep_local=choice)
+        self.request_cloud_sync(silent=False)
+
+    def queue_cloud_sync(self):
+        self._refresh_cloud_controls()
+        if not self.cloud.has_session or self._cloud_change_job is not None:
+            return
+
+        def run():
+            self._cloud_change_job = None
+            self.request_cloud_sync(silent=True)
+
+        self._cloud_change_job = self.after(250, run)
+
+    def _schedule_periodic_cloud_sync(self):
+        if self._cloud_periodic_job is not None:
+            try:
+                self.after_cancel(self._cloud_periodic_job)
+            except tk.TclError:
+                pass
+
+        def periodic():
+            self._cloud_periodic_job = None
+            if self.cloud.has_session:
+                self.request_cloud_sync(silent=True)
+            self._schedule_periodic_cloud_sync()
+
+        self._cloud_periodic_job = self.after(60_000, periodic)
+
     def _date_field(self, parent, variable, background=None):
         return DateField(
             parent,
@@ -1272,6 +1505,7 @@ class App(tk.Tk):
             self.refresh_clients()
             self.refresh_client_table()
             self.refresh_dashboard()
+            self.queue_cloud_sync()
             self.motion.highlight_tree_row(
                 self.clients_tree,
                 saved_client_id,
@@ -1314,6 +1548,7 @@ class App(tk.Tk):
             self.refresh_clients()
             self.refresh_client_table()
             self.refresh_dashboard()
+            self.queue_cloud_sync()
 
     def add_client(self):
         name = simpledialog.askstring("Novo cliente", "Nome do cliente:", parent=self)
@@ -1324,6 +1559,7 @@ class App(tk.Tk):
                 self.refresh_client_table()
                 self.sale_client.set(name)
                 self.refresh_dashboard()
+                self.queue_cloud_sync()
                 self.motion.highlight_tree_row(
                     self.clients_tree,
                     client_id,
@@ -1344,6 +1580,7 @@ class App(tk.Tk):
             self.prod_price.set("")
             self.refresh_products()
             self.refresh_dashboard()
+            self.queue_cloud_sync()
             self.motion.highlight_tree_row(
                 self.products,
                 product_id,
@@ -1426,6 +1663,7 @@ class App(tk.Tk):
             name, price_cents = dialog.result
             self.db.update_product(int(row[0]), name, price_cents)
             self.refresh_products()
+            self.queue_cloud_sync()
             self.motion.highlight_tree_row(
                 self.products,
                 row[0],
@@ -1482,6 +1720,7 @@ class App(tk.Tk):
             self.db.delete_product(int(row[0]))
             self.refresh_products()
             self.refresh_dashboard()
+            self.queue_cloud_sync()
 
     def scan(self):
         try:
@@ -1550,6 +1789,7 @@ class App(tk.Tk):
             self.refresh_sales()
             self.run_report(show_errors=False)
             self.refresh_dashboard()
+            self.queue_cloud_sync()
             self.motion.highlight_tree_row(
                 self.sales_tree,
                 sale_id,
@@ -1622,6 +1862,7 @@ class App(tk.Tk):
                 self.refresh_sales()
                 self.run_report(show_errors=False)
                 self.refresh_dashboard()
+                self.queue_cloud_sync()
 
     def run_report(self, show_errors=True):
         try:

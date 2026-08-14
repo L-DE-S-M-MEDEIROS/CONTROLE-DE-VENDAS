@@ -1,5 +1,18 @@
 # Histórico de versões
 
+## 1.7.0 — 2026-08-14
+
+- sincronização segura de clientes, produtos e vendas pelo Supabase entre duas ou mais máquinas;
+- acesso remoto restrito exclusivamente a `vendasldesmmedeiros@gmail.com` por autenticação e políticas RLS;
+- SQLite local mantido para continuar trabalhando quando a internet estiver indisponível;
+- fila automática envia alterações pendentes ao conectar, a cada operação e periodicamente;
+- sessão protegida pelo Windows DPAPI, sem armazenar a senha e sem incluir chave administrativa no EXE;
+- identificadores UUID e códigos de barras aleatórios evitam colisões entre cadastros feitos em computadores diferentes;
+- controle de revisão detecta quando duas máquinas editam exatamente o mesmo registro;
+- conflitos ficam preservados e podem ser resolvidos escolhendo a versão local ou a versão do Supabase;
+- nova área **Dados online — Supabase** em Configurações, com conectar, sincronizar e desconectar;
+- esquema remoto isolado das tabelas dos outros sistemas já existentes no projeto Supabase.
+
 ## 1.6.2 — 2026-08-14
 
 - animação de navegação refeita para não trocar o gerenciador de layout das páginas;

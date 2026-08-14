@@ -21,6 +21,19 @@ O instalador será criado em `outputs\ControleDeVendas-Setup.exe`, acompanhado d
 
 O banco SQLite é salvo em `%LOCALAPPDATA%\ControleDeVendas\controle_vendas.db`, fora da pasta do programa. Atualizações, reinstalações, desinstalações e rollback não apagam clientes, produtos ou vendas.
 
+## Dados online entre computadores
+
+O aplicativo usa o Supabase como cópia central sincronizada e mantém o SQLite como base local. Em **Configurações → Dados online — Supabase**, conecte a conta `vendasldesmmedeiros@gmail.com`. A senha é usada somente para autenticar e não é salva; a sessão fica criptografada para o usuário atual do Windows.
+
+- cada cadastro, edição ou venda entra primeiro no SQLite e é enviado ao Supabase em segundo plano;
+- sem internet, as alterações ficam na fila e são enviadas quando a conexão retornar;
+- ao iniciar e a cada 60 segundos, o aplicativo confere os dados da outra máquina;
+- duas máquinas podem registrar vendas diferentes simultaneamente;
+- se ambas editarem exatamente o mesmo registro, o aplicativo preserva a alteração local e solicita qual versão deve ser mantida;
+- somente a conta autorizada pelas políticas RLS consegue ler ou alterar as tabelas do Vendas PRO.
+
+Detalhes técnicos e procedimento de conexão: [docs/SUPABASE_SYNC.md](docs/SUPABASE_SYNC.md).
+
 ## Atualizações
 
 O aplicativo consulta a última versão estável do repositório público `L-DE-S-M-MEDEIROS/CONTROLE-DE-VENDAS`. Ele aceita somente os anexos oficiais `ControleDeVendas-Setup.exe` e `SHA256.txt`, valida a integridade antes de solicitar autorização para instalar e mantém uma cópia recuperável da versão anterior.

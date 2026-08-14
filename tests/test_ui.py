@@ -17,6 +17,25 @@ from sales_control.theme import ThemePreferences, get_theme
 
 
 class InterfaceTests(unittest.TestCase):
+    def test_cloud_settings_are_locked_to_the_company_account(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "cloud_settings.db",
+                maximize=False,
+                dpi_scale_override=1.0,
+            )
+            app.withdraw()
+            app.update()
+            try:
+                self.assertEqual("normal", str(app.cloud_connect_button["state"]))
+                self.assertEqual("disabled", str(app.cloud_sync_button["state"]))
+                self.assertIn("Conta não conectada", app.cloud_status["text"])
+                self.assertEqual("", app.cloud_password.get())
+            finally:
+                app.destroy()
+
     def test_page_transitions_are_subtle_fast_and_cancellable(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"LOCALAPPDATA": folder}, clear=False

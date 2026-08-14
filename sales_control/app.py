@@ -123,15 +123,34 @@ def parse_money(text):
     return int((value * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
+def _show_centered_modal(window, parent, width, height):
+    """Show a secondary window centered over the active application window."""
+    window.update_idletasks()
+    width = max(int(width), window.winfo_reqwidth())
+    height = max(int(height), window.winfo_reqheight())
+    parent.update_idletasks()
+    parent_width = parent.winfo_width()
+    parent_height = parent.winfo_height()
+    if parent_width > 1 and parent_height > 1:
+        x = parent.winfo_rootx() + (parent_width - width) // 2
+        y = parent.winfo_rooty() + (parent_height - height) // 2
+    else:
+        x = max(0, (window.winfo_screenwidth() - width) // 2)
+        y = max(0, (window.winfo_screenheight() - height) // 2)
+    window.geometry(f"{width}x{height}+{x}+{y}")
+    window.deiconify()
+    window.lift()
+    window.update_idletasks()
+
+
 class UpdateOfferDialog(tk.Toplevel):
     def __init__(self, parent, info, on_download):
         super().__init__(parent)
+        self.withdraw()
         self.title("Atualização disponível")
         self.configure(bg=BG)
-        self.geometry(f"{parent.px(620)}x{parent.px(510)}")
         self.minsize(parent.px(540), parent.px(430))
         self.transient(parent)
-        self.grab_set()
 
         header = tk.Frame(self, bg=NAVY, height=parent.px(92))
         header.pack(fill="x")
@@ -160,17 +179,20 @@ class UpdateOfferDialog(tk.Toplevel):
             on_download(info)
 
         ttk.Button(actions, text="Baixar atualização", style="Accent.TButton", command=accept).pack(side="right", padx=(0, 10))
+        _show_centered_modal(
+            self, parent, parent.px(620), parent.px(510)
+        )
+        self.grab_set()
 
 
 class DownloadDialog(tk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent)
+        self.withdraw()
         self.title("Baixando atualização")
         self.configure(bg=PANEL)
-        self.geometry(f"{parent.px(520)}x{parent.px(190)}")
         self.resizable(False, False)
         self.transient(parent)
-        self.grab_set()
         self.protocol("WM_DELETE_WINDOW", lambda: None)
         tk.Label(self, text="Baixando o instalador oficial", bg=PANEL, fg=TEXT, font=(FONT_FAMILY, 14, "bold")).pack(anchor="w", padx=26, pady=(25, 4))
         self.status = tk.Label(self, text="Preparando download e validação...", bg=PANEL, fg=MUTED, font=("Segoe UI", 9))
@@ -178,6 +200,10 @@ class DownloadDialog(tk.Toplevel):
         self.bar = ttk.Progressbar(self, maximum=100, mode="determinate")
         self.bar.pack(fill="x", padx=27, pady=(18, 6))
         tk.Label(self, text="A instalação só começará depois da sua confirmação.", bg=PANEL, fg=MUTED, font=("Segoe UI", 8)).pack(anchor="w", padx=27)
+        _show_centered_modal(
+            self, parent, parent.px(520), parent.px(190)
+        )
+        self.grab_set()
 
     def set_progress(self, downloaded, total):
         if total:
@@ -191,13 +217,12 @@ class DownloadDialog(tk.Toplevel):
 class ProductEditDialog(tk.Toplevel):
     def __init__(self, parent, name, price):
         super().__init__(parent)
+        self.withdraw()
         self.result = None
         self.title("Editar produto")
         self.configure(bg=BG)
-        self.geometry(f"{parent.px(520)}x{parent.px(340)}")
         self.minsize(parent.px(480), parent.px(320))
         self.transient(parent)
-        self.grab_set()
 
         body = tk.Frame(self, bg=PANEL, padx=parent.px(28), pady=parent.px(26), highlightthickness=1, highlightbackground=BORDER)
         body.pack(fill="both", expand=True, padx=parent.px(18), pady=parent.px(18))
@@ -219,6 +244,10 @@ class ProductEditDialog(tk.Toplevel):
         ttk.Button(actions, text="Salvar alterações", style="Accent.TButton", command=self._save).pack(side="right", padx=(0, parent.px(10)))
         self.bind("<Return>", lambda _event: self._save())
         self.bind("<Escape>", lambda _event: self.destroy())
+        _show_centered_modal(
+            self, parent, parent.px(520), parent.px(340)
+        )
+        self.grab_set()
         name_entry.focus_set()
         name_entry.selection_range(0, "end")
 
@@ -1939,7 +1968,11 @@ class App(tk.Tk):
     def check_updates(self, silent=False):
         if getattr(self, "update_busy", False):
             if not silent:
-                messagebox.showinfo("Atualização", "A verificação já está em andamento.")
+                messagebox.showinfo(
+                    "Atualização",
+                    "A verificação já está em andamento.",
+                    parent=self,
+                )
             return
         self.update_busy = True
         self.update_button.config(text="Verificando...", state="disabled")
@@ -1973,7 +2006,7 @@ class App(tk.Tk):
         if hasattr(self, "settings_update_status"):
             self.settings_update_status.config(text=error, fg=RED)
         if not silent:
-            messagebox.showerror("Atualização", error)
+            messagebox.showerror("Atualização", error, parent=self)
 
     def _update_check_finished(self, info, silent):
         self._reset_update_button()
@@ -1981,7 +2014,11 @@ class App(tk.Tk):
             if hasattr(self, "settings_update_status"):
                 self.settings_update_status.config(text=f"Versão {__version__}: aplicativo atualizado.", fg=GREEN)
             if not silent:
-                messagebox.showinfo("Atualização", f"Você já está usando a versão mais recente ({__version__}).")
+                messagebox.showinfo(
+                    "Atualização",
+                    f"Você já está usando a versão mais recente ({__version__}).",
+                    parent=self,
+                )
             return
         if hasattr(self, "settings_update_status"):
             self.settings_update_status.config(text=f"Nova versão disponível: {info.version}", fg=GREEN)
@@ -2026,14 +2063,20 @@ class App(tk.Tk):
         if not messagebox.askyesno(
             "Autorizar instalação",
             f"A versão {version} foi baixada e passou na verificação SHA-256.\n\nDeseja fechar o aplicativo e instalar agora?",
+            parent=self,
         ):
-            messagebox.showinfo("Atualização", "A instalação não foi iniciada. Você poderá verificar novamente quando desejar.")
+            messagebox.showinfo(
+                "Atualização",
+                "A instalação não foi iniciada. Você poderá verificar novamente quando desejar.",
+                parent=self,
+            )
             return
         try:
             backup = self.db.backup(self.db.path.parent / "backups")
             messagebox.showinfo(
                 "Pronto para instalar",
                 f"Um backup foi criado em:\n{backup}\n\nAo clicar em OK, o aplicativo fechará e a versão {version} será instalada.",
+                parent=self,
             )
             launch_installer(installer)
             self.destroy()

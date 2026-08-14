@@ -11,12 +11,61 @@ from unittest.mock import patch
 from PIL import Image
 
 from installer_launcher import InstallerWindow
-from sales_control.app import App, parse_money
+from sales_control.app import (
+    App,
+    DownloadDialog,
+    ProductEditDialog,
+    UpdateOfferDialog,
+    parse_money,
+)
 from sales_control.date_input import DATE_MASK, display_date, iso_date
 from sales_control.theme import ThemePreferences, get_theme
 
 
 class InterfaceTests(unittest.TestCase):
+    def test_secondary_windows_are_centered_over_the_app_at_high_dpi(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "centered_dialogs.db",
+                maximize=False,
+                dpi_scale_override=1.5,
+            )
+            app.geometry("1700x1000+60+30")
+            app.update()
+            dialogs = []
+            try:
+                dialogs.append(ProductEditDialog(app, "Produto", "19,90"))
+                dialogs[-1].grab_release()
+                dialogs.append(
+                    UpdateOfferDialog(
+                        app,
+                        SimpleNamespace(
+                            title="Atualização de teste",
+                            version="9.9.9",
+                            notes="Descrição da atualização.",
+                        ),
+                        lambda _info: None,
+                    )
+                )
+                dialogs[-1].grab_release()
+                dialogs.append(DownloadDialog(app))
+                dialogs[-1].grab_release()
+                for dialog in dialogs:
+                    dialog.update_idletasks()
+                    parent_center_x = app.winfo_rootx() + app.winfo_width() / 2
+                    parent_center_y = app.winfo_rooty() + app.winfo_height() / 2
+                    dialog_center_x = dialog.winfo_x() + dialog.winfo_width() / 2
+                    dialog_center_y = dialog.winfo_y() + dialog.winfo_height() / 2
+                    self.assertAlmostEqual(parent_center_x, dialog_center_x, delta=20)
+                    self.assertAlmostEqual(parent_center_y, dialog_center_y, delta=30)
+            finally:
+                for dialog in dialogs:
+                    if dialog.winfo_exists():
+                        dialog.destroy()
+                app.destroy()
+
     def test_cloud_settings_are_locked_to_the_company_account(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"LOCALAPPDATA": folder}, clear=False

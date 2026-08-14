@@ -1,5 +1,14 @@
 # Histórico de versões
 
+## 1.7.1 — 2026-08-14
+
+- janelas secundárias passam a abrir centralizadas sobre o aplicativo, inclusive em monitores com DPI elevado;
+- tela **Editar produto** corrigida para não surgir no canto superior esquerdo;
+- telas de atualização disponível e progresso do download recebem o mesmo posicionamento central;
+- janela secundária permanece oculta até o Windows concluir o cálculo de tamanho e posição, evitando a piscada no canto da tela;
+- confirmações nativas do fluxo de atualização agora ficam explicitamente vinculadas à janela principal;
+- novo teste de interface valida o centro das três janelas em escala de 150%.
+
 ## 1.7.0 — 2026-08-14
 
 - sincronização segura de clientes, produtos e vendas pelo Supabase entre duas ou mais máquinas;

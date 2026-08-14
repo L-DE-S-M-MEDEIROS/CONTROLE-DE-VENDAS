@@ -17,7 +17,7 @@ from sales_control.theme import ThemePreferences, get_theme
 
 
 class InterfaceTests(unittest.TestCase):
-    def test_page_and_sales_tab_transitions_are_fluid_and_cancellable(self):
+    def test_page_transitions_are_subtle_fast_and_cancellable(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(
             os.environ, {"LOCALAPPDATA": folder}, clear=False
         ):
@@ -30,23 +30,27 @@ class InterfaceTests(unittest.TestCase):
             app.update()
             try:
                 app.show_page("products")
-                first_overlay = app.motion.page_overlay
-                self.assertIsNotNone(first_overlay)
+                first_page = app.motion.page_widget
+                self.assertIs(first_page, app.pages["products"])
+                self.assertEqual("place", first_page.winfo_manager())
                 self.assertEqual("products", app.current_page)
 
                 app.show_page("clients")
                 self.assertEqual("clients", app.current_page)
-                self.assertIsNot(first_overlay, app.motion.page_overlay)
+                self.assertIs(app.motion.page_widget, app.pages["clients"])
+                self.assertIsNot(first_page, app.motion.page_widget)
 
                 app.show_page("sales")
                 app.sales_inner.select(app.sales_history_tab)
                 app.update()
-                self.assertIsNotNone(app.motion.tab_indicator)
+                self.assertEqual(
+                    str(app.sales_history_tab), app.sales_inner.select()
+                )
 
-                app.after(400, app.quit)
+                app.after(250, app.quit)
                 app.mainloop()
-                self.assertIsNone(app.motion.page_overlay)
-                self.assertIsNone(app.motion.tab_indicator)
+                self.assertIsNone(app.motion.page_widget)
+                self.assertEqual("grid", app.pages["sales"].winfo_manager())
             finally:
                 app.destroy()
 
@@ -67,17 +71,21 @@ class InterfaceTests(unittest.TestCase):
                 app.add_product()
                 product_id = str(app.db.list_products()[0]["id"])
                 self.assertEqual(
-                    ("motion_success",),
+                    ("motion_highlight",),
                     tuple(app.products.item(product_id, "tags")),
                 )
                 self.assertIsNotNone(app.motion.toast_widget)
+                toast_icon = app.motion.toast_widget.winfo_children()[0]
+                self.assertEqual(
+                    app.motion.toast_widget.cget("bg"), toast_icon.cget("bg")
+                )
 
                 app.client_name.set("Cliente animado")
                 app.client_notes.set("Cadastro com confirmação visual")
                 app.save_client()
                 client_id = str(app.db.list_clients()[0]["id"])
                 self.assertEqual(
-                    ("motion_success",),
+                    ("motion_highlight",),
                     tuple(app.clients_tree.item(client_id, "tags")),
                 )
                 toast_labels = [

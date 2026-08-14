@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## 1.6.1 — 2026-08-14
+
+- navegação lateral redesenhada com deslocamento mínimo de 9 px em apenas 130 ms;
+- removidos a cortina, a faixa e os destaques coloridos das novas animações;
+- cadastros passam a usar somente um realce curto e neutro na linha salva;
+- avisos de confirmação menores, mais rápidos e sem barra colorida;
+- troca das abas internas permanece direta, preservando o visual selecionado do tema.
+
 ## 1.6.0 — 2026-08-14
 
 - transição fluida e curta ao navegar entre todos os módulos do aplicativo;

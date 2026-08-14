@@ -726,7 +726,6 @@ class App(tk.Tk):
         self.sales_history_tab = history
         self.sales_inner.add(new, text="  Nova venda  ")
         self.sales_inner.add(history, text="  Histórico de vendas  ")
-        self.sales_inner.bind("<<NotebookTabChanged>>", self._sales_tab_changed)
 
         form = tk.Frame(new, bg=PANEL)
         form.pack(fill="x")
@@ -1146,13 +1145,7 @@ class App(tk.Tk):
             panel=PANEL,
             text_color=TEXT,
             muted=MUTED,
-            accent=GREEN,
             border=BORDER,
-        )
-
-    def _sales_tab_changed(self, _event=None):
-        self.after_idle(
-            lambda: self.motion.underline_tab(self.sales_inner, accent=CYAN)
         )
 
     def _refresh_update_settings(self):
@@ -1215,7 +1208,7 @@ class App(tk.Tk):
         elif key == "settings":
             self._refresh_update_settings()
         if should_animate:
-            self.motion.reveal_page(self.content, PANEL, BLUE)
+            self.motion.slide_page(self.pages[key])
 
     def refresh_all(self):
         self.refresh_clients()
@@ -1283,11 +1276,10 @@ class App(tk.Tk):
             self.refresh_clients()
             self.refresh_client_table()
             self.refresh_dashboard()
-            self.motion.pulse_tree_row(
+            self.motion.highlight_tree_row(
                 self.clients_tree,
                 saved_client_id,
-                success=GREEN,
-                soft=SELECTED,
+                background=SOFT,
                 text=TEXT,
             )
             self._show_success(message)
@@ -1336,11 +1328,10 @@ class App(tk.Tk):
                 self.refresh_client_table()
                 self.sale_client.set(name)
                 self.refresh_dashboard()
-                self.motion.pulse_tree_row(
+                self.motion.highlight_tree_row(
                     self.clients_tree,
                     client_id,
-                    success=GREEN,
-                    soft=SELECTED,
+                    background=SOFT,
                     text=TEXT,
                 )
                 self._show_success(f"Cliente {name} cadastrado com sucesso.")
@@ -1357,11 +1348,10 @@ class App(tk.Tk):
             self.prod_price.set("")
             self.refresh_products()
             self.refresh_dashboard()
-            self.motion.pulse_tree_row(
+            self.motion.highlight_tree_row(
                 self.products,
                 product_id,
-                success=GREEN,
-                soft=SELECTED,
+                background=SOFT,
                 text=TEXT,
             )
             self._show_success(
@@ -1440,11 +1430,10 @@ class App(tk.Tk):
             name, price_cents = dialog.result
             self.db.update_product(int(row[0]), name, price_cents)
             self.refresh_products()
-            self.motion.pulse_tree_row(
+            self.motion.highlight_tree_row(
                 self.products,
                 row[0],
-                success=GREEN,
-                soft=SELECTED,
+                background=SOFT,
                 text=TEXT,
             )
             self._show_success("Nome e preço do produto atualizados.")
@@ -1565,11 +1554,10 @@ class App(tk.Tk):
             self.refresh_sales()
             self.run_report(show_errors=False)
             self.refresh_dashboard()
-            self.motion.pulse_tree_row(
+            self.motion.highlight_tree_row(
                 self.sales_tree,
                 sale_id,
-                success=GREEN,
-                soft=SELECTED,
+                background=SOFT,
                 text=TEXT,
             )
             self._show_success(f"Venda nº {sale_id} salva com sucesso.")

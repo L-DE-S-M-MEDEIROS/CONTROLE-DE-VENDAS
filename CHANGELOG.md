@@ -1,5 +1,14 @@
 # Histórico de versões
 
+## 1.6.0 — 2026-08-14
+
+- transição fluida e curta ao navegar entre todos os módulos do aplicativo;
+- indicador animado ao alternar entre **Nova venda** e **Histórico de vendas**;
+- produtos e clientes cadastrados ou editados recebem um pulso visual na tabela;
+- avisos de sucesso passam a surgir suavemente sem bloquear a operação diária;
+- vendas finalizadas também recebem confirmação animada, preservando a bipagem rápida;
+- animações anteriores são canceladas com segurança em cliques rápidos e ao trocar o tema.
+
 ## 1.5.6 — 2026-08-13
 
 - novo ícone clean de vendas, com sacola, gráfico e indicação de crescimento;

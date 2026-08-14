@@ -17,6 +17,7 @@ from . import __version__
 from .branding import app_icon_png_path
 from .database import Database
 from .date_input import DateField, display_date, iso_date
+from .motion import MotionController
 from .reports import money, product_label_pdf, product_pdf, revenue_pdf
 from .theme import THEMES, ThemePreferences, get_theme, preferred_font
 from .updater import (
@@ -262,6 +263,7 @@ class App(tk.Tk):
         self.current_page = "home"
         self._focus_job = None
         self._scan_animation_jobs = []
+        self.motion = MotionController(self, self.px)
         self._style()
         self._create_icons()
         self._build_shell()
@@ -283,6 +285,7 @@ class App(tk.Tk):
     def destroy(self):
         self._cancel_barcode_focus()
         self._cancel_scan_animation()
+        self.motion.cancel_all()
         for job in getattr(self, "_startup_jobs", ()):
             try:
                 self.after_cancel(job)
@@ -723,6 +726,7 @@ class App(tk.Tk):
         self.sales_history_tab = history
         self.sales_inner.add(new, text="  Nova venda  ")
         self.sales_inner.add(history, text="  Histórico de vendas  ")
+        self.sales_inner.bind("<<NotebookTabChanged>>", self._sales_tab_changed)
 
         form = tk.Frame(new, bg=PANEL)
         form.pack(fill="x")
@@ -1107,6 +1111,7 @@ class App(tk.Tk):
 
         self._cancel_barcode_focus()
         self._cancel_scan_animation()
+        self.motion.cancel_all()
         for child in self.winfo_children():
             child.destroy()
         self.pages = {}
@@ -1133,7 +1138,22 @@ class App(tk.Tk):
         if draft["report_client"] in self.report_client_map:
             self.report_client.set(draft["report_client"])
         self.refresh_items()
-        self.show_page(current_page)
+        self.show_page(current_page, animate=True)
+
+    def _show_success(self, message):
+        self.motion.show_toast(
+            message,
+            panel=PANEL,
+            text_color=TEXT,
+            muted=MUTED,
+            accent=GREEN,
+            border=BORDER,
+        )
+
+    def _sales_tab_changed(self, _event=None):
+        self.after_idle(
+            lambda: self.motion.underline_tab(self.sales_inner, accent=CYAN)
+        )
 
     def _refresh_update_settings(self):
         if hasattr(self, "rollback_button"):
@@ -1161,7 +1181,7 @@ class App(tk.Tk):
     def _field_label(self, parent, text, row, column, padx=(0, 0), bg=None):
         tk.Label(parent, text=text, bg=bg or PANEL, fg=MUTED, font=(FONT_FAMILY, 9, "bold")).grid(row=row, column=column, sticky="w", padx=padx, pady=(0, 5))
 
-    def show_page(self, key, history=False):
+    def show_page(self, key, history=False, animate=None):
         titles = {
             "home": ("Início", "Visão geral da operação"),
             "sales": ("Vendas", "Registro e histórico de vendas"),
@@ -1170,6 +1190,7 @@ class App(tk.Tk):
             "reports": ("Relatórios", "Faturamento bruto da empresa"),
             "settings": ("Configurações", "Atualizações e recuperação"),
         }
+        should_animate = key != self.current_page if animate is None else animate
         self._cancel_barcode_focus()
         self.pages[key].tkraise()
         self.current_page = key
@@ -1193,6 +1214,8 @@ class App(tk.Tk):
             self.run_report(show_errors=False)
         elif key == "settings":
             self._refresh_update_settings()
+        if should_animate:
+            self.motion.reveal_page(self.content, PANEL, BLUE)
 
     def refresh_all(self):
         self.refresh_clients()
@@ -1235,7 +1258,12 @@ class App(tk.Tk):
         search = self.client_search.get() if hasattr(self, "client_search") else ""
         for client in self.db.list_clients(search):
             created = display_date(str(client["created_at"])[:10])
-            self.clients_tree.insert("", "end", values=(client["id"], client["name"], client["notes"], created))
+            self.clients_tree.insert(
+                "",
+                "end",
+                iid=str(client["id"]),
+                values=(client["id"], client["name"], client["notes"], created),
+            )
 
     def save_client(self):
         name = self.client_name.get().strip()
@@ -1243,16 +1271,26 @@ class App(tk.Tk):
             return messagebox.showwarning("Cliente", "Informe o nome do cliente.")
         try:
             if self.editing_client_id is None:
-                self.db.add_client(name, self.client_notes.get())
+                saved_client_id = self.db.add_client(name, self.client_notes.get())
                 message = "Cliente cadastrado com sucesso."
             else:
-                self.db.update_client(self.editing_client_id, name, self.client_notes.get())
+                saved_client_id = self.editing_client_id
+                self.db.update_client(
+                    self.editing_client_id, name, self.client_notes.get()
+                )
                 message = "Cliente atualizado com sucesso."
             self.cancel_client_edit()
             self.refresh_clients()
             self.refresh_client_table()
             self.refresh_dashboard()
-            messagebox.showinfo("Clientes", message)
+            self.motion.pulse_tree_row(
+                self.clients_tree,
+                saved_client_id,
+                success=GREEN,
+                soft=SELECTED,
+                text=TEXT,
+            )
+            self._show_success(message)
         except Exception as exc:
             messagebox.showerror("Clientes", f"Não foi possível salvar: {exc}")
 
@@ -1293,11 +1331,19 @@ class App(tk.Tk):
         name = simpledialog.askstring("Novo cliente", "Nome do cliente:", parent=self)
         if name:
             try:
-                self.db.add_client(name)
+                client_id = self.db.add_client(name)
                 self.refresh_clients()
                 self.refresh_client_table()
                 self.sale_client.set(name)
                 self.refresh_dashboard()
+                self.motion.pulse_tree_row(
+                    self.clients_tree,
+                    client_id,
+                    success=GREEN,
+                    soft=SELECTED,
+                    text=TEXT,
+                )
+                self._show_success(f"Cliente {name} cadastrado com sucesso.")
             except Exception as exc:
                 messagebox.showerror("Cliente", f"Não foi possível cadastrar: {exc}")
 
@@ -1310,15 +1356,16 @@ class App(tk.Tk):
             self.prod_name.set("")
             self.prod_price.set("")
             self.refresh_products()
-            if self.products.exists(str(product_id)):
-                self.products.selection_set(str(product_id))
-                self.products.focus(str(product_id))
-                self.products.see(str(product_id))
             self.refresh_dashboard()
-            messagebox.showinfo(
-                "Produto cadastrado",
-                f"Código gerado automaticamente:\n{product['barcode']}\n\n"
-                "Use os ícones ⧉ e ⎙ ao lado do produto para copiar o código ou imprimir a etiqueta.",
+            self.motion.pulse_tree_row(
+                self.products,
+                product_id,
+                success=GREEN,
+                soft=SELECTED,
+                text=TEXT,
+            )
+            self._show_success(
+                f"Produto cadastrado • código {product['barcode']}"
             )
         except Exception as exc:
             messagebox.showerror("Produto", str(exc))
@@ -1393,9 +1440,14 @@ class App(tk.Tk):
             name, price_cents = dialog.result
             self.db.update_product(int(row[0]), name, price_cents)
             self.refresh_products()
-            if self.products.exists(str(row[0])):
-                self.products.selection_set(str(row[0]))
-            messagebox.showinfo("Produto", "Nome e preço atualizados com sucesso.")
+            self.motion.pulse_tree_row(
+                self.products,
+                row[0],
+                success=GREEN,
+                soft=SELECTED,
+                text=TEXT,
+            )
+            self._show_success("Nome e preço do produto atualizados.")
         except Exception as exc:
             messagebox.showerror("Produto", str(exc))
 
@@ -1509,11 +1561,18 @@ class App(tk.Tk):
                 raise ValueError("Selecione ou cadastre um cliente.")
             sale_date = iso_date(self.sale_date.get())
             sale_id = self.db.save_sale(client_id, sale_date, self.current_items, self.editing_sale_id)
-            messagebox.showinfo("Venda", f"Venda nº {sale_id} salva com sucesso.")
             self.clear_sale()
             self.refresh_sales()
             self.run_report(show_errors=False)
             self.refresh_dashboard()
+            self.motion.pulse_tree_row(
+                self.sales_tree,
+                sale_id,
+                success=GREEN,
+                soft=SELECTED,
+                text=TEXT,
+            )
+            self._show_success(f"Venda nº {sale_id} salva com sucesso.")
         except Exception as exc:
             messagebox.showerror("Venda", str(exc))
 
@@ -1521,7 +1580,18 @@ class App(tk.Tk):
         for item in self.sales_tree.get_children():
             self.sales_tree.delete(item)
         for sale in self.db.list_sales():
-            self.sales_tree.insert("", "end", values=(f"#{sale['id']}", display_date(sale["sale_date"]), sale["client_name"], sale["item_count"], money(sale["total_cents"])))
+            self.sales_tree.insert(
+                "",
+                "end",
+                iid=str(sale["id"]),
+                values=(
+                    f"#{sale['id']}",
+                    display_date(sale["sale_date"]),
+                    sale["client_name"],
+                    sale["item_count"],
+                    money(sale["total_cents"]),
+                ),
+            )
 
     def edit_sale(self):
         row = self._selected(self.sales_tree)

@@ -1,5 +1,6 @@
 import os
 import tempfile
+import tkinter as tk
 import unittest
 from datetime import date
 from pathlib import Path
@@ -16,6 +17,81 @@ from sales_control.theme import ThemePreferences, get_theme
 
 
 class InterfaceTests(unittest.TestCase):
+    def test_page_and_sales_tab_transitions_are_fluid_and_cancellable(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "motion_pages.db",
+                maximize=False,
+                dpi_scale_override=1.0,
+            )
+            app.geometry("1400x820")
+            app.update()
+            try:
+                app.show_page("products")
+                first_overlay = app.motion.page_overlay
+                self.assertIsNotNone(first_overlay)
+                self.assertEqual("products", app.current_page)
+
+                app.show_page("clients")
+                self.assertEqual("clients", app.current_page)
+                self.assertIsNot(first_overlay, app.motion.page_overlay)
+
+                app.show_page("sales")
+                app.sales_inner.select(app.sales_history_tab)
+                app.update()
+                self.assertIsNotNone(app.motion.tab_indicator)
+
+                app.after(400, app.quit)
+                app.mainloop()
+                self.assertIsNone(app.motion.page_overlay)
+                self.assertIsNone(app.motion.tab_indicator)
+            finally:
+                app.destroy()
+
+    def test_product_and_client_registration_have_animated_feedback(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(
+            os.environ, {"LOCALAPPDATA": folder}, clear=False
+        ):
+            app = App(
+                db_path=Path(folder) / "motion_saves.db",
+                maximize=False,
+                dpi_scale_override=1.0,
+            )
+            app.withdraw()
+            app.update()
+            try:
+                app.prod_name.set("Produto animado")
+                app.prod_price.set("19,90")
+                app.add_product()
+                product_id = str(app.db.list_products()[0]["id"])
+                self.assertEqual(
+                    ("motion_success",),
+                    tuple(app.products.item(product_id, "tags")),
+                )
+                self.assertIsNotNone(app.motion.toast_widget)
+
+                app.client_name.set("Cliente animado")
+                app.client_notes.set("Cadastro com confirmação visual")
+                app.save_client()
+                client_id = str(app.db.list_clients()[0]["id"])
+                self.assertEqual(
+                    ("motion_success",),
+                    tuple(app.clients_tree.item(client_id, "tags")),
+                )
+                toast_labels = [
+                    child.cget("text")
+                    for container in app.motion.toast_widget.winfo_children()
+                    for child in container.winfo_children()
+                    if isinstance(child, tk.Label)
+                ]
+                self.assertTrue(
+                    any("Cliente cadastrado" in text for text in toast_labels)
+                )
+            finally:
+                app.destroy()
+
     def test_open_and_closed_app_use_the_same_high_resolution_brand_icon(self):
         root = Path(__file__).resolve().parent.parent
         png_path = root / "assets" / "app_icon.png"
